@@ -41,3 +41,25 @@ JOB_01 원천 추출 ↓ 성공
 JOB_02 데이터 정제 ↓ 성공 
 JOB_03 Target 적재 ↓ 
 JOB_04 데이터 품질 검증
+----------------
+
+# Oracle Source DB
+ORACLE_HOST=127.0.0.1
+ORACLE_PORT=1521
+ORACLE_SERVICE_NAME=XEPDB1
+ORACLE_USER=etl_source
+ORACLE_PASSWORD=source_password
+
+# PostgreSQL Target DB
+POSTGRES_HOST=127.0.0.1
+POSTGRES_PORT=5432
+POSTGRES_DATABASE=target_db
+POSTGRES_USER=etl_target
+POSTGRES_PASSWORD=target_password
+
+# MySQL Audit DB
+MYSQL_HOST=127.0.0.1
+MYSQL_PORT=3306
+MYSQL_DATABASE=etl_audit
+MYSQL_USER=etl_audit
+MYSQL_PASSWORD=audit_password
