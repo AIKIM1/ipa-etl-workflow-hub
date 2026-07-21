@@ -1,0 +1,10 @@
+{
+  "name": "ipa-etl-workflow-hub",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev:frontend": "npm.cmd --prefix frontend run dev",
+    "build:frontend": "npm.cmd --prefix frontend run build",
+    "dev:backend": "python -m uvicorn app.main:app --reload --app-dir backend --port 8000"
+  }
+}
