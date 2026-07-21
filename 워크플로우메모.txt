@@ -63,3 +63,9 @@ MYSQL_PORT=3306
 MYSQL_DATABASE=etl_audit
 MYSQL_USER=etl_audit
 MYSQL_PASSWORD=audit_password
+-------------------------------
+
+개발 완료했습니다. 프로젝트는 [C:\\Codex\\ipa-etl-workflow-hub](/C:/Codex/ipa-etl-workflow-hub)에 생성했고, 프론트/백엔드 서버도 실행 중입니다.
+프론트: http://127.0.0.1:5173
+백엔드 헬스체크: http://127.0.0.1:8000/health
+React Flow 예제 참고: Add Node on Edge Drop
