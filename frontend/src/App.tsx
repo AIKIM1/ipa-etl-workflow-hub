@@ -19,8 +19,6 @@ import {
 import {
   BadgeCheck,
   CircleDot,
-  Database,
-  FileCode2,
   GitBranchPlus,
   Layers3,
   Minus,
@@ -36,7 +34,7 @@ import {
 type LoadType = 'Full' | 'Incremental';
 type JobStatus = 'ready' | 'success' | 'pending';
 type ComponentType = 'source-extract' | 'data-cleaning' | 'target-load' | 'quality-check' | 'custom-transform';
-type ActivePanel = 'empty' | 'workflow' | 'env' | 'query' | 'job-config';
+type ActivePanel = 'empty' | 'workflow' | 'job-config';
 
 type WorkflowForm = {
   workflowName: string;
@@ -75,6 +73,8 @@ type JobNodeData = BaseJobData & {
 };
 
 type JobNode = Node<JobNodeData, 'job'>;
+
+const topMenus = ['워크플로우', 'Job 관리', 'Connections', '실행 이력', '모니터링', '설정'];
 
 const componentConfigs: Record<ComponentType, ComponentConfig> = {
   'source-extract': {
@@ -171,8 +171,6 @@ function App() {
   const [workflowCreated, setWorkflowCreated] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [jobConfigs, setJobConfigs] = useState<Record<string, JobConfig>>({});
-  const [envText, setEnvText] = useState('SOURCE_DB_URL=postgresql://user:password@host:5432/source\nTARGET_DB_URL=postgresql://user:password@host:5432/target');
-  const [queryText, setQueryText] = useState('select *\nfrom source_schema.source_table\nwhere updated_at >= :watermark');
   const [nodes, setNodes, onNodesChange] = useNodesState<JobNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const { screenToFlowPosition } = useReactFlow();
@@ -354,20 +352,10 @@ function App() {
           <span>워크플로우 작업</span>
         </div>
 
-        <nav className="side-actions" aria-label="작업 메뉴">
-          <button type="button" className={activePanel === 'workflow' ? 'active' : ''} onClick={() => setActivePanel('workflow')}>
-            <GitBranchPlus size={18} />
-            <span>워크플로우 생성</span>
-          </button>
-          <button type="button" className={activePanel === 'env' ? 'active' : ''} onClick={() => setActivePanel('env')}>
-            <Database size={18} />
-            <span>DB 연결정보 .env 입력</span>
-          </button>
-          <button type="button" className={activePanel === 'query' ? 'active' : ''} onClick={() => setActivePanel('query')}>
-            <FileCode2 size={18} />
-            <span>쿼리 입력</span>
-          </button>
-        </nav>
+        <div className="sidebar-note">
+          <GitBranchPlus size={18} />
+          <span>상단 워크플로우 메뉴에서 새 워크플로우를 생성하세요.</span>
+        </div>
 
         <div className="sidebar-footer">
           <Sparkles size={16} />
@@ -377,9 +365,29 @@ function App() {
 
       <section className="workspace">
         <header className="topbar">
-          <div>
-            <p>Workflow Builder</p>
-            <h2>{workflowForm.workflowName || 'Start ETL workflow project'}</h2>
+          <div className="topbar-main">
+            <div className="top-navigation">
+              <nav className="main-menu" aria-label="주요 메뉴">
+                {topMenus.map((menu, index) => (
+                  <button
+                    key={menu}
+                    type="button"
+                    className={index === 0 && activePanel === 'workflow' ? 'active' : ''}
+                    onClick={() => {
+                      if (menu === '워크플로우') {
+                        setActivePanel('workflow');
+                      }
+                    }}
+                  >
+                    {menu}
+                  </button>
+                ))}
+              </nav>
+            </div>
+            <div className="workflow-heading">
+              <p>Workflow Builder</p>
+              <h2>{workflowForm.workflowName || 'Start ETL workflow project'}</h2>
+            </div>
           </div>
           <div className="topbar-actions">
             <button type="button" onClick={addJob} disabled={!workflowCreated} title="Job 추가">
@@ -459,40 +467,6 @@ function App() {
                   <span>입력완료</span>
                 </button>
               </form>
-            )}
-
-            {activePanel === 'env' && (
-              <div className="form-panel">
-                <div className="panel-title">
-                  <Database size={20} />
-                  <div>
-                    <p>DB 연결정보</p>
-                    <h3>.env 입력</h3>
-                  </div>
-                </div>
-                <textarea className="code-area" value={envText} onChange={(event) => setEnvText(event.target.value)} spellCheck={false} />
-                <button type="button" className="primary-submit">
-                  <Save size={17} />
-                  <span>저장</span>
-                </button>
-              </div>
-            )}
-
-            {activePanel === 'query' && (
-              <div className="form-panel">
-                <div className="panel-title">
-                  <FileCode2 size={20} />
-                  <div>
-                    <p>Source Query</p>
-                    <h3>쿼리 입력</h3>
-                  </div>
-                </div>
-                <textarea className="code-area query" value={queryText} onChange={(event) => setQueryText(event.target.value)} spellCheck={false} />
-                <button type="button" className="primary-submit">
-                  <Save size={17} />
-                  <span>저장</span>
-                </button>
-              </div>
             )}
 
             {activePanel === 'job-config' && selectedNode && (
