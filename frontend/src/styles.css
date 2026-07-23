@@ -92,7 +92,7 @@ button {
 }
 
 .brand-row h1 {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 760;
 }
 
@@ -107,6 +107,50 @@ button {
   color: #a8b7c9;
   background: rgba(15, 23, 42, 0.78);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.saved-workflow-items {
+  display: grid;
+  gap: 7px;
+}
+
+.saved-workflow-items button {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 11px 12px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 8px;
+  color: #9fb0c4;
+  background: rgba(15, 23, 42, 0.52);
+  text-align: left;
+  cursor: pointer;
+}
+
+.saved-workflow-items button:hover,
+.saved-workflow-items button.active {
+  border-color: rgba(45, 212, 191, 0.42);
+  background: linear-gradient(145deg, rgba(20, 184, 166, 0.18), rgba(37, 99, 235, 0.12));
+}
+
+.saved-workflow-items strong,
+.saved-workflow-items span,
+.saved-workflow-items small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-workflow-items strong {
+  color: #e6eef8;
+  font-size: 13px;
+}
+
+.saved-workflow-items span,
+.saved-workflow-items small {
+  color: #8ea3b8;
+  font-size: 11px;
 }
 
 .side-actions {
@@ -304,6 +348,189 @@ button {
   padding: 18px;
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(2, 6, 12, 0.68);
+  backdrop-filter: blur(7px);
+}
+
+.workflow-modal {
+  width: min(620px, 100%);
+  max-height: min(780px, calc(100dvh - 48px));
+  overflow-y: auto;
+  padding: 24px;
+  border: 1px solid rgba(94, 234, 212, 0.28);
+  border-radius: 8px;
+  background: linear-gradient(145deg, rgba(18, 29, 43, 0.98), rgba(7, 12, 19, 0.98));
+  box-shadow: 0 34px 100px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.workflow-save-modal {
+  width: min(460px, 100%);
+  max-height: min(440px, calc(100dvh - 48px));
+  padding: 24px;
+  overflow-y: auto;
+  border: 1px solid rgba(94, 234, 212, 0.28);
+  border-radius: 8px;
+  background: linear-gradient(145deg, rgba(18, 29, 43, 0.98), rgba(7, 12, 19, 0.98));
+  box-shadow: 0 34px 100px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.job-edit-modal {
+  width: min(660px, 100%);
+  max-height: min(820px, calc(100dvh - 48px));
+  padding: 24px;
+  overflow-y: auto;
+  border: 1px solid rgba(94, 234, 212, 0.28);
+  border-radius: 8px;
+  background: linear-gradient(145deg, rgba(18, 29, 43, 0.98), rgba(7, 12, 19, 0.98));
+  box-shadow: 0 34px 100px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.modal-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.icon-button {
+  display: grid;
+  flex: 0 0 auto;
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+  place-items: center;
+  border-radius: 8px;
+}
+
+.workflow-side-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.workflow-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 14px 14px 0;
+}
+
+.workflow-tabs button {
+  min-height: 42px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: #9fb0c4;
+  background: rgba(9, 14, 22, 0.64);
+  font-size: 13px;
+  font-weight: 740;
+}
+
+.workflow-tabs button.active {
+  color: #ecfeff;
+  border-color: rgba(45, 212, 191, 0.42);
+  background: linear-gradient(145deg, rgba(20, 184, 166, 0.22), rgba(37, 99, 235, 0.16));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.workflow-tab-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px;
+  scrollbar-gutter: stable;
+}
+
+.workflow-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.workflow-panel-heading .panel-title {
+  margin-bottom: 0;
+}
+
+.inline-create-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: #dffcf7;
+  border-color: rgba(45, 212, 191, 0.32);
+  background: rgba(20, 184, 166, 0.13);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.draggable-catalog-item {
+  cursor: grab;
+  user-select: none;
+}
+
+.draggable-catalog-item:hover {
+  border-color: rgba(94, 234, 212, 0.46);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.draggable-catalog-item:active {
+  cursor: grabbing;
+}
+
+.component-catalog {
+  display: grid;
+  gap: 10px;
+}
+
+.component-catalog-item {
+  display: grid;
+  gap: 7px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--component-accent) 36%, rgba(148, 163, 184, 0.16));
+  border-left: 3px solid var(--component-accent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--component-accent) 8%, rgba(9, 14, 22, 0.62));
+}
+
+.component-catalog-item strong {
+  color: #e6eef8;
+  font-size: 14px;
+}
+
+.component-catalog-item span {
+  color: #9fb0c4;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.workflow-list-empty {
+  margin: 4px 0 0;
+  color: #8ea3b8;
+  font-size: 13px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .flow-surface,
 .detail-panel {
   position: relative;
@@ -371,6 +598,14 @@ button {
   line-height: 1.55;
 }
 
+.management-board {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 22px;
+  scrollbar-gutter: stable;
+}
+
 .detail-panel {
   display: flex;
   flex-direction: column;
@@ -389,12 +624,14 @@ button {
 
 .form-panel::-webkit-scrollbar,
 .panel-placeholder::-webkit-scrollbar,
+.management-board::-webkit-scrollbar,
 .sidebar::-webkit-scrollbar {
   width: 10px;
 }
 
 .form-panel::-webkit-scrollbar-thumb,
 .panel-placeholder::-webkit-scrollbar-thumb,
+.management-board::-webkit-scrollbar-thumb,
 .sidebar::-webkit-scrollbar-thumb {
   border: 3px solid transparent;
   border-radius: 999px;
@@ -437,9 +674,37 @@ button {
   font-weight: 650;
 }
 
+.form-grid.compact {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 4px 0 13px;
+}
+
+.toggle-grid label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 11px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 8px;
+  color: #cbd5e1;
+  background: rgba(9, 14, 22, 0.54);
+  font-size: 13px;
+  font-weight: 650;
+}
+
 .field-label input,
 .field-label select,
-.code-area {
+.code-area,
+.compact-area {
   width: 100%;
   min-height: 42px;
   border: 1px solid rgba(148, 163, 184, 0.18);
@@ -453,7 +718,8 @@ button {
 
 .field-label input:focus,
 .field-label select:focus,
-.code-area:focus {
+.code-area:focus,
+.compact-area:focus {
   border-color: rgba(45, 212, 191, 0.55);
   box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
@@ -467,6 +733,188 @@ button {
 
 .code-area.query {
   min-height: 340px;
+}
+
+.compact-area {
+  min-height: 92px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.input-help {
+  margin: 10px 0 14px;
+  padding: 12px;
+  border: 1px solid rgba(45, 212, 191, 0.18);
+  border-radius: 8px;
+  color: #9fb0c4;
+  background: rgba(20, 184, 166, 0.08);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.section-label {
+  margin: 18px 0 10px;
+  color: #dbeafe;
+  font-size: 13px;
+  font-weight: 780;
+}
+
+.check-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.check-row {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 8px;
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.58);
+}
+
+.check-row input {
+  width: 16px;
+  height: 16px;
+}
+
+.check-row span {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  color: #93c5fd;
+}
+
+.check-row strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.workflow-toggle {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.data-list {
+  display: grid;
+  gap: 12px;
+}
+
+.data-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 8px;
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.78), rgba(8, 13, 19, 0.9));
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.data-card.selectable {
+  cursor: pointer;
+}
+
+.data-card.selectable:hover {
+  border-color: rgba(45, 212, 191, 0.34);
+}
+
+.data-card h3 {
+  margin: 10px 0 6px;
+  color: #f8fafc;
+  font-size: 17px;
+}
+
+.data-card p {
+  margin: 0;
+  color: #9fb0c4;
+  line-height: 1.5;
+}
+
+.job-contract {
+  margin-top: 7px !important;
+  color: #8fa4bd !important;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+}
+
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  color: #aebed0;
+  font-size: 12px;
+}
+
+.card-meta span,
+.card-meta button {
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 7px;
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.7);
+}
+
+.card-meta button {
+  cursor: pointer;
+}
+
+.status-pill.success,
+.status-pill.tested {
+  color: #86efac;
+  border-color: rgba(134, 239, 172, 0.25);
+}
+
+.status-pill.ready,
+.status-pill.registered {
+  color: #fde68a;
+  border-color: rgba(253, 230, 138, 0.24);
+}
+
+.status-pill.pending {
+  color: #c4b5fd;
+}
+
+.template-preview {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 8px;
+  background: rgba(8, 13, 19, 0.82);
+}
+
+.template-preview pre {
+  max-height: 280px;
+  margin: 0;
+  overflow: auto;
+  color: #dbeafe;
+  font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.module-placeholder {
+  margin: 18px;
+  padding: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 8px;
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.72), rgba(8, 13, 19, 0.9));
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.module-placeholder > p {
+  margin: 0;
+  color: #9fb0c4;
 }
 
 .primary-submit {
@@ -564,6 +1012,13 @@ button {
   font-size: 12px;
 }
 
+.job-meta.muted {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .job-actions {
   justify-content: flex-end;
   gap: 7px;
@@ -649,7 +1104,7 @@ button {
   .main-menu button {
     min-height: 40px;
     padding: 0 13px;
-    font-size: 15px;
+    font-size: 14px;
   }
 
   .topbar-actions {
@@ -667,9 +1122,23 @@ button {
     gap: 12px;
   }
 
+  .modal-backdrop {
+    padding: 12px;
+  }
+
+  .workflow-modal {
+    max-height: calc(100dvh - 24px);
+    padding: 18px;
+  }
+
   .form-panel,
   .panel-placeholder {
     padding: 18px;
+  }
+
+  .form-grid.compact {
+    grid-template-columns: 1fr;
+    gap: 0;
   }
 }
 
@@ -693,7 +1162,7 @@ button {
   .main-menu button {
     flex: 1 1 calc(50% - 8px);
     padding: 0 10px;
-    font-size: 14px;
+    font-size: 13px;
   }
 
   .content-grid {
@@ -702,7 +1171,20 @@ button {
 
   .field-label input,
   .field-label select,
-  .code-area {
+  .code-area,
+  .compact-area {
     min-height: 44px;
+  }
+
+  .toggle-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .data-card {
+    grid-template-columns: 1fr;
+  }
+
+  .card-meta {
+    justify-content: flex-start;
   }
 }
