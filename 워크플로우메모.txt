@@ -65,7 +65,28 @@ MYSQL_USER=etl_audit
 MYSQL_PASSWORD=audit_password
 -------------------------------
 
-개발 완료했습니다. 프로젝트는 [C:\\Codex\\ipa-etl-workflow-hub](/C:/Codex/ipa-etl-workflow-hub)에 생성했고, 프론트/백엔드 서버도 실행 중입니다.
 프론트: http://127.0.0.1:5173
 백엔드 헬스체크: http://127.0.0.1:8000/health
 React Flow 예제 참고: Add Node on Edge Drop
+----------------------------------
+
+DB Connection 컴포넌트
+-> 접속정보 등록, 연결 테스트, 메타데이터 조회
+
+Source Extract 컴포넌트
+-> Connection 선택, 테이블 선택, select 생성
+
+백엔드
+-> 공통 Connection Factory 사용
+
+Python 코드 생성
+-> 필요한 경우에만 생성
+-> 비밀번호 대신 환경변수 참조 사용
+
+
+
+
+
+
+
+
