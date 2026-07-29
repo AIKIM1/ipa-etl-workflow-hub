@@ -81,40 +81,44 @@ Source Extract 컴포넌트
 
 Python 코드 생성
 -> 필요한 경우에만 생성
--> 비밀번호 대신 환경변수 참조 사용
-
+-> 비밀번호 대신 환경변수 
 
 
 
 from mage_ai.data_preparation.decorators import data_exporter
 from sqlalchemy import create_engine, URL
-from pandas import DataFrame
+import pandas as pd
 
 
 @data_exporter
-def export_data(df: DataFrame, **kwargs) -> None:
-    url = URL.create(
+def export_data(data, *args, **kwargs):
+    # 앞 블록의 결과를 DataFrame으로 변환
+    df = data if isinstance(data, pd.DataFrame) else pd.DataFrame(data)
+
+    db_url = URL.create(
         drivername='postgresql+pg8000',
         username='postgres',
-        password='1234',
+        password='rlaeodud1!',
         host='localhost',
         port=5432,
-        database='testdb',
+        database='postgres',
     )
 
-    engine = create_engine(url)
+    engine = create_engine(db_url)
 
     try:
         with engine.begin() as connection:
             df.to_sql(
-                name='target_table',
+                name='job_metadata',
                 con=connection,
                 schema='public',
                 if_exists='append',
                 index=False,
             )
+
+        print(f'job_metadata 테이블에 {len(df)}건 저장 완료')
+
     finally:
         engine.dispose()
-
 
 
