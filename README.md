@@ -116,3 +116,35 @@ DB별 입력값:
 | `metadata_service.py` | schema/table/column metadata 조회 |
 | `template_generator.py` | 비밀번호 대신 `password_env_key`를 참조하는 Python 연결 템플릿 생성 |
 | `main.py` | FastAPI route, connection/job/workflow registry |
+
+
+
+from mage_ai.data_preparation.decorators import data_exporter
+from sqlalchemy import create_engine, URL
+from pandas import DataFrame
+
+
+@data_exporter
+def export_data(df: DataFrame, **kwargs) -> None:
+    url = URL.create(
+        drivername='postgresql+pg8000',
+        username='postgres',
+        password='1234',
+        host='localhost',
+        port=5432,
+        database='testdb',
+    )
+
+    engine = create_engine(url)
+
+    try:
+        with engine.begin() as connection:
+            df.to_sql(
+                name='target_table',
+                con=connection,
+                schema='public',
+                if_exists='append',
+                index=False,
+            )
+    finally:
+        engine.dispose()
