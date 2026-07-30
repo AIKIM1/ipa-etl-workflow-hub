@@ -1,0 +1,47 @@
+cd C:\LocalRepository\mage-ai-workflow
+.venv\Scripts\Activate.ps1
+mage start .
+-----------------
+1. 프론트엔드
+[Data Loader] 클릭 
+-> HTTP POST 서버로 전송
+
+
+2. 백엔드(Mage 서버)
+[HTTP 요청 도착]
+        ↓
+┌─────────────────┐
+│  Mage 백엔드    │
+│  (FastAPI 기반) │
+├─────────────────┤
+│ 1. 요청 파싱    │  ← "어떤 블록을 실행하라는 거지?"
+│ 2. 블록 찾기    │  ← green_crafter.py 파일 검색
+│ 3. 코드 로드    │  ← 파일 내용 읽기
+│ 4. 실행 준비    │  ← Python 환경 설정
+└─────────────────┘
+        ↓
+[Python 코드 실행으로 전달]
+
+
+3. Python 실행 ( 실제 블록 코드)
+Data Loader (데이터 추출)
+
+[백엔드에서 받음]
+        ↓
+┌─────────────────┐
+│ green_crafter.py │
+├─────────────────┤
+│ @data_loader    │
+│ def load_data():│
+│                 │
+│  1. DB 연결     │ ← create_engine(...)
+│  2. SQL 실행    │ ← SELECT * FROM ...
+│  3. DataFrame   │ ← pd.DataFrame(...)
+
+ // 데이터 파일로 저장 로직 추가될 예정
+
+│  4. return df   │ ← 결과 반환
+└─────────────────┘
+        ↓
+[DataFrame 결과]
+
