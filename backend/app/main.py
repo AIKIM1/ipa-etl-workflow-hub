@@ -198,9 +198,7 @@ def health() -> dict[str, str]:
 def test_connection(payload: DatabaseConnectionInput) -> dict[str, object]:
     """저장 전 입력값으로 일회성 연결 테스트를 실행합니다."""
     try:
-        result = test_database_connection(payload)
-        metadata = get_database_metadata(payload)
-        return {**result, "metadata": metadata}
+        return test_database_connection(payload)
     except DatabaseConnectionError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 

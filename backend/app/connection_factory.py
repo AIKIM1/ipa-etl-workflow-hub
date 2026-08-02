@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from time import perf_counter
 
 from sqlalchemy import URL, Engine, create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -97,8 +98,9 @@ def create_database_engine(config: DatabaseConnectionInput) -> Engine:
     )
 
 
-def test_database_connection(config: DatabaseConnectionInput) -> dict[str, str | bool]:
+def test_database_connection(config: DatabaseConnectionInput) -> dict[str, str | bool | int]:
     """Engine을 만들고 DB별 간단한 테스트 SQL을 실행합니다."""
+    started_at = perf_counter()
     engine = create_database_engine(config)
     test_sql = "SELECT 1 FROM DUAL" if config.database_type == DatabaseType.ORACLE else "SELECT 1"
 
@@ -108,6 +110,7 @@ def test_database_connection(config: DatabaseConnectionInput) -> dict[str, str |
         return {
             "success": True,
             "connection_name": config.connection_name,
+            "response_time_ms": round((perf_counter() - started_at) * 1000),
             "message": "DB 연결에 성공했습니다.",
         }
     except SQLAlchemyError as error:

@@ -61,6 +61,29 @@ type RegisteredConnection = ConnectionForm & {
   createdAt: string;
 };
 
+type PersistedConnectionConfig = Omit<ConnectionForm, 'password'>;
+
+type SourceExtractConfig = {
+  connectionNodeId: string;
+  sourceSchema: string;
+  sourceTable: string;
+  queryCondition: string;
+  watermarkColumn: string;
+};
+
+type ConnectionTestState = {
+  status: 'idle' | 'testing' | 'success' | 'error';
+  message?: string;
+  responseTimeMs?: number;
+};
+
+type ConnectionTestResponse = {
+  success: boolean;
+  connection_name: string;
+  message: string;
+  response_time_ms?: number;
+};
+
 type ComponentConfig = {
   label: string;
   accent: string;
@@ -73,6 +96,8 @@ type JobNodeData = {
   componentType: ComponentType;
   status: 'ready' | 'success' | 'pending';
   connectionLabel: string;
+  connectionConfig?: PersistedConnectionConfig;
+  sourceExtractConfig?: SourceExtractConfig;
   onDelete: (nodeId: string) => void;
 } & Record<string, unknown>;
 
@@ -84,6 +109,8 @@ type WorkflowNodeSnapshotData = {
   componentType: ComponentType;
   status: 'ready' | 'success' | 'pending';
   connectionLabel: string;
+  connectionConfig?: PersistedConnectionConfig;
+  sourceExtractConfig?: SourceExtractConfig;
 };
 
 type WorkflowNodeSnapshot = Omit<JobNode, 'data'> & {
@@ -166,6 +193,71 @@ const connectionDefaults: ConnectionForm = {
   readOnly: false,
   description: '원천 시스템 개발 DB',
 };
+
+const sourceExtractDefaults: SourceExtractConfig = {
+  connectionNodeId: '',
+  sourceSchema: '',
+  sourceTable: '',
+  queryCondition: '',
+  watermarkColumn: '',
+};
+
+function toPersistedConnectionConfig(connection: ConnectionForm): PersistedConnectionConfig {
+  const { password: _password, ...config } = connection;
+  return config;
+}
+
+function connectionDescription(connection: Omit<ConnectionForm, 'password'>): string {
+  const database =
+    connection.dbType === 'ORACLE'
+      ? connection.serviceName || connection.sid || 'service'
+      : connection.databaseName || 'database';
+
+  return `${connection.dbType} · ${connection.host}:${connection.port}/${database}`;
+}
+
+function sourceExtractDescription(connectionName: string, config: SourceExtractConfig): string {
+  const tableName = [config.sourceSchema, config.sourceTable].filter(Boolean).join('.') || '테이블 미설정';
+  return `${connectionName} · ${tableName}`;
+}
+
+function createConnectionTestPayload(connection: ConnectionForm) {
+  const password = connection.password.trim();
+  const passwordEnvKey = connection.passwordEnvKey.trim();
+
+  return {
+    connection_name: connection.name.trim(),
+    database_type: connection.dbType,
+    host: connection.host.trim(),
+    port: Number(connection.port),
+    database_name: connection.databaseName.trim() || null,
+    service_name: connection.serviceName.trim() || null,
+    sid: connection.sid.trim() || null,
+    default_schema: connection.schemaName.trim() || null,
+    username: connection.username.trim(),
+    ...(password ? { password } : { password_env_key: passwordEnvKey }),
+    connection_role: connection.role,
+    environment: connection.environment,
+    connect_timeout: Number(connection.connectTimeout),
+    pool_size: Number(connection.poolSize),
+    max_overflow: Number(connection.maxOverflow),
+    use_ssl: connection.useSsl,
+    read_only: connection.readOnly,
+    description: connection.description.trim() || null,
+  };
+}
+
+function extractApiErrorMessage(detail: unknown): string {
+  if (typeof detail === 'string') {
+    return detail;
+  }
+
+  if (Array.isArray(detail)) {
+    return detail.map((item) => (typeof item?.msg === 'string' ? item.msg : '입력값을 확인해주세요.')).join(' ');
+  }
+
+  return 'DB 연결 테스트에 실패했습니다.';
+}
 
 const workflowDefaults = {
   workflowName: '',
@@ -290,11 +382,33 @@ function App() {
   const [showSaved, setShowSaved] = useState(false);
   const [editingJobId, setEditingJobId] = useState<string | null>(null);
   const [editingNodeForm, setEditingNodeForm] = useState<{title: string; componentType: ComponentType}>({title: '', componentType: 'source-extract'});
+  const [editingConnectionForm, setEditingConnectionForm] = useState<ConnectionForm>(connectionDefaults);
+  const [editingSourceExtractForm, setEditingSourceExtractForm] = useState<SourceExtractConfig>(sourceExtractDefaults);
+  const [connectionTest, setConnectionTest] = useState<ConnectionTestState>({ status: 'idle' });
 
   const selectedConnection = connections.find((connection) => connection.id === selectedConnectionId) ?? connections[0];
+  const registeredDatabaseNodes = useMemo(
+    () => nodes.filter((node) => node.data.componentType === 'db-connection' && Boolean(node.data.connectionConfig?.name)),
+    [nodes],
+  );
 
   const removeWorkflowNode = useCallback((nodeId: string) => {
-    setNodes((current) => current.filter((node) => node.id !== nodeId));
+    setNodes((current) =>
+      current
+        .filter((node) => node.id !== nodeId)
+        .map((node) =>
+          node.data.sourceExtractConfig?.connectionNodeId === nodeId
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  connectionLabel: 'DB Connection 선택 필요',
+                  sourceExtractConfig: { ...node.data.sourceExtractConfig, connectionNodeId: '' },
+                },
+              }
+            : node,
+        ),
+    );
     setEdges((current) => current.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
   }, [setEdges, setNodes]);
 
@@ -356,6 +470,13 @@ function App() {
     const position = screenToFlowPosition({ x: event.clientX, y: event.clientY });
     const config = componentConfigs[payload.componentType];
     const nextIndex = nodes.length + 1;
+    const isDatabaseConnection = payload.componentType === 'db-connection';
+    const isSourceExtract = payload.componentType === 'source-extract';
+    const initialConnectionConfig = toPersistedConnectionConfig({
+      ...connectionDefaults,
+      name: '',
+      password: '',
+    });
 
     const newNode: JobNode = {
       id: `node-${payload.componentType}-${nodeSequence++}`,
@@ -368,6 +489,12 @@ function App() {
         componentType: payload.componentType,
         status: 'ready',
         connectionLabel: '컴포넌트',
+        ...(isDatabaseConnection
+          ? { connectionLabel: '접속정보 설정 필요', connectionConfig: initialConnectionConfig }
+          : {}),
+        ...(isSourceExtract
+          ? { connectionLabel: 'DB Connection 선택 필요', sourceExtractConfig: sourceExtractDefaults }
+          : {}),
         onDelete: removeWorkflowNode,
       },
     };
@@ -400,6 +527,21 @@ function App() {
       title: node.data.title,
       componentType: node.data.componentType,
     });
+    if (node.data.componentType === 'db-connection') {
+      setEditingConnectionForm({
+        ...connectionDefaults,
+        ...node.data.connectionConfig,
+        name: node.data.connectionConfig?.name || node.data.title,
+        password: '',
+      });
+    }
+    if (node.data.componentType === 'source-extract') {
+      setEditingSourceExtractForm({
+        ...sourceExtractDefaults,
+        ...node.data.sourceExtractConfig,
+      });
+    }
+    setConnectionTest({ status: 'idle' });
   };
 
   const updateNode = (title: string, componentType: ComponentType) => {
@@ -420,9 +562,104 @@ function App() {
     );
   };
 
+  const updateEditingConnection = (changes: Partial<ConnectionForm>) => {
+    setEditingConnectionForm((current) => ({ ...current, ...changes }));
+    setConnectionTest({ status: 'idle' });
+  };
+
+  const updateEditingSourceExtract = (changes: Partial<SourceExtractConfig>) => {
+    setEditingSourceExtractForm((current) => ({ ...current, ...changes }));
+  };
+
+  const testEditingConnection = async () => {
+    setConnectionTest({ status: 'testing', message: 'DB 접속을 확인하고 있습니다.' });
+
+    try {
+      const response = await fetch('http://127.0.0.1:8000/api/connections/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(createConnectionTestPayload(editingConnectionForm)),
+      });
+      const data = (await response.json().catch(() => ({}))) as Partial<ConnectionTestResponse> & { detail?: unknown };
+
+      if (!response.ok || !data.success) {
+        throw new Error(extractApiErrorMessage(data.detail));
+      }
+
+      setConnectionTest({
+        status: 'success',
+        message: data.message || 'DB 연결에 성공했습니다.',
+        responseTimeMs: data.response_time_ms,
+      });
+    } catch (error) {
+      setConnectionTest({
+        status: 'error',
+        message: error instanceof Error ? error.message : 'DB 연결 테스트에 실패했습니다.',
+      });
+    }
+  };
+
   const saveNodeEdit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!editingJobId) return;
+
+    if (editingNodeForm.componentType === 'db-connection') {
+      if (connectionTest.status !== 'success') return;
+
+      const connectionConfig = toPersistedConnectionConfig(editingConnectionForm);
+      setNodes((current) =>
+        current.map((node) =>
+          node.id === editingJobId
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  title: connectionConfig.name || 'DB connection',
+                  connectionLabel: connectionDescription(connectionConfig),
+                  connectionConfig,
+                },
+              }
+            : node.data.sourceExtractConfig?.connectionNodeId === editingJobId
+              ? {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    connectionLabel: sourceExtractDescription(connectionConfig.name, node.data.sourceExtractConfig),
+                  },
+                }
+            : node,
+        ),
+      );
+      setEditingJobId(null);
+      return;
+    }
+
+    if (editingNodeForm.componentType === 'source-extract') {
+      const selectedDatabaseNode = registeredDatabaseNodes.find(
+        (node) => node.id === editingSourceExtractForm.connectionNodeId,
+      );
+      if (!selectedDatabaseNode) return;
+
+      const connectionName = selectedDatabaseNode.data.connectionConfig?.name || selectedDatabaseNode.data.title;
+      setNodes((current) =>
+        current.map((node) =>
+          node.id === editingJobId
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  title: editingNodeForm.title.trim() || componentConfigs['source-extract'].label,
+                  connectionLabel: sourceExtractDescription(connectionName, editingSourceExtractForm),
+                  sourceExtractConfig: editingSourceExtractForm,
+                },
+              }
+            : node,
+        ),
+      );
+      setEditingJobId(null);
+      return;
+    }
+
     updateNode(editingNodeForm.title, editingNodeForm.componentType);
     setEditingJobId(null);
   };
@@ -738,12 +975,93 @@ function App() {
                 </button>
               </div>
               <div id="job-edit-modal-title" className="sr-only">컴포넌트 정보 수정</div>
-              <TextField label="이름" value={editingNodeForm.title} onChange={(value) => setEditingNodeForm({ ...editingNodeForm, title: value })} />
-              <label className="field-label">
-                <span>컴포넌트 유형</span>
-                <div className="readonly-field">{componentConfigs[editingNodeForm.componentType].label}</div>
-              </label>
-              <button type="submit" className="primary-submit">
+              {editingNodeForm.componentType === 'db-connection' ? (
+                <>
+                  <div className="modal-section-title">DB Connection 설정</div>
+                  <div className="field-grid">
+                    <TextField label="Connection 이름" value={editingConnectionForm.name} onChange={(name) => updateEditingConnection({ name })} placeholder="SRC_POSTGRES_DEV" />
+                    <SelectField label="DB 유형" value={editingConnectionForm.dbType} onChange={(dbType) => updateEditingConnection({ dbType: dbType as DatabaseType, port: defaultPort(dbType as DatabaseType) })}>
+                      <option value="POSTGRESQL">PostgreSQL</option>
+                      <option value="ORACLE">Oracle</option>
+                      <option value="MYSQL">MySQL</option>
+                    </SelectField>
+                    <TextField label="Host" value={editingConnectionForm.host} onChange={(host) => updateEditingConnection({ host })} placeholder="db.example.com" />
+                    <TextField label="Port" type="number" value={editingConnectionForm.port} onChange={(port) => updateEditingConnection({ port })} />
+                    {editingConnectionForm.dbType === 'ORACLE' ? (
+                      <>
+                        <TextField label="Service Name" value={editingConnectionForm.serviceName} onChange={(serviceName) => updateEditingConnection({ serviceName, sid: '' })} placeholder="ORCLPDB1" />
+                        <TextField label="SID" value={editingConnectionForm.sid} onChange={(sid) => updateEditingConnection({ sid, serviceName: '' })} placeholder="ORCL" />
+                      </>
+                    ) : (
+                      <TextField label="Database 이름" value={editingConnectionForm.databaseName} onChange={(databaseName) => updateEditingConnection({ databaseName })} placeholder="etl_source" />
+                    )}
+                    <TextField label="기본 Schema" value={editingConnectionForm.schemaName} onChange={(schemaName) => updateEditingConnection({ schemaName })} placeholder="public" />
+                    <TextField label="Username" value={editingConnectionForm.username} onChange={(username) => updateEditingConnection({ username })} />
+                    <TextField label="Password" type="password" value={editingConnectionForm.password} onChange={(password) => updateEditingConnection({ password })} placeholder="테스트 요청에만 사용" />
+                    <TextField label="Password Env Key" value={editingConnectionForm.passwordEnvKey} onChange={(passwordEnvKey) => updateEditingConnection({ passwordEnvKey })} placeholder="DB_CONN_PASSWORD" />
+                    <SelectField label="연결 역할" value={editingConnectionForm.role} onChange={(role) => updateEditingConnection({ role: role as ConnectionRole })}>
+                      <option value="SOURCE">Source</option>
+                      <option value="TARGET">Target</option>
+                      <option value="AUDIT">Audit</option>
+                    </SelectField>
+                    <SelectField label="환경" value={editingConnectionForm.environment} onChange={(environment) => updateEditingConnection({ environment: environment as EnvironmentType })}>
+                      <option value="DEV">DEV</option>
+                      <option value="TEST">TEST</option>
+                      <option value="PROD">PROD</option>
+                    </SelectField>
+                    <TextField label="접속 제한 시간(초)" type="number" value={editingConnectionForm.connectTimeout} onChange={(connectTimeout) => updateEditingConnection({ connectTimeout })} />
+                  </div>
+                  <div className="toggle-grid modal-toggle-grid">
+                    <label><input type="checkbox" checked={editingConnectionForm.useSsl} onChange={(event) => updateEditingConnection({ useSsl: event.target.checked })} /> SSL 사용</label>
+                    <label><input type="checkbox" checked={editingConnectionForm.readOnly} onChange={(event) => updateEditingConnection({ readOnly: event.target.checked })} /> 읽기 전용</label>
+                  </div>
+                  <TextAreaField label="설명" value={editingConnectionForm.description} onChange={(description) => updateEditingConnection({ description })} />
+                  <div className="input-help">Password는 DB 접속 테스트 요청에만 사용하며, 저장되는 Workflow JSON에는 포함하지 않습니다. 비밀번호 대신 환경변수 키를 입력할 수 있습니다.</div>
+                  <button type="button" className="connection-test-button" onClick={() => void testEditingConnection()} disabled={connectionTest.status === 'testing'}>
+                    <Database size={17} />
+                    <span>{connectionTest.status === 'testing' ? '접속 테스트 중' : 'DB 접속 테스트'}</span>
+                  </button>
+                  {connectionTest.status !== 'idle' && (
+                    <div className={`connection-test-result ${connectionTest.status}`} role="status">
+                      <span>{connectionTest.message}</span>
+                      {connectionTest.responseTimeMs !== undefined && <strong>{connectionTest.responseTimeMs} ms</strong>}
+                    </div>
+                  )}
+                </>
+              ) : editingNodeForm.componentType === 'source-extract' ? (
+                <>
+                  <div className="modal-section-title">원천 추출 설정</div>
+                  <TextField label="Job 이름" value={editingNodeForm.title} onChange={(title) => setEditingNodeForm({ ...editingNodeForm, title })} />
+                  <label className="field-label">
+                    <span>컴포넌트 유형</span>
+                    <div className="readonly-field">{componentConfigs['source-extract'].label}</div>
+                  </label>
+                  <div className="field-grid">
+                    <SelectField label="Source DB Connection" value={editingSourceExtractForm.connectionNodeId} onChange={(connectionNodeId) => updateEditingSourceExtract({ connectionNodeId })}>
+                      <option value="">등록된 DB Connection 선택</option>
+                      {registeredDatabaseNodes.map((node) => (
+                        <option key={node.id} value={node.id}>
+                          {node.data.connectionConfig?.name || node.data.title}
+                        </option>
+                      ))}
+                    </SelectField>
+                    <TextField label="Source Schema" value={editingSourceExtractForm.sourceSchema} onChange={(sourceSchema) => updateEditingSourceExtract({ sourceSchema })} placeholder="public" />
+                    <TextField label="Source Table" value={editingSourceExtractForm.sourceTable} onChange={(sourceTable) => updateEditingSourceExtract({ sourceTable })} placeholder="customers" />
+                    <TextField label="Watermark 컬럼" value={editingSourceExtractForm.watermarkColumn} onChange={(watermarkColumn) => updateEditingSourceExtract({ watermarkColumn })} placeholder="updated_at" />
+                  </div>
+                  <TextAreaField label="조회 조건" value={editingSourceExtractForm.queryCondition} onChange={(queryCondition) => updateEditingSourceExtract({ queryCondition })} />
+                  <div className="input-help">선택한 DB Connection의 접속정보를 재사용합니다. 조회 조건과 Watermark 컬럼은 이후 실행 엔진에서 증분 추출 조건으로 사용됩니다.</div>
+                </>
+              ) : (
+                <>
+                  <TextField label="이름" value={editingNodeForm.title} onChange={(value) => setEditingNodeForm({ ...editingNodeForm, title: value })} />
+                  <label className="field-label">
+                    <span>컴포넌트 유형</span>
+                    <div className="readonly-field">{componentConfigs[editingNodeForm.componentType].label}</div>
+                  </label>
+                </>
+              )}
+              <button type="submit" className="primary-submit" disabled={(editingNodeForm.componentType === 'db-connection' && connectionTest.status !== 'success') || (editingNodeForm.componentType === 'source-extract' && !editingSourceExtractForm.connectionNodeId)}>
                 <Save size={17} />
                 <span>수정 완료</span>
               </button>
