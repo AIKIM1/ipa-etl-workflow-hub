@@ -157,6 +157,30 @@ type SavedWorkflow = {
   edges: Edge[];
 };
 
+type WorkflowSummaryResponse = {
+  id: string;
+  workflow_name: string;
+  schedule: string;
+  status: string;
+  version: number;
+  node_count: number;
+  edge_count: number;
+  updated_at: string;
+};
+
+type WorkflowWorkspaceResponse = {
+  id: string;
+  workflow_name: string;
+  schedule: string;
+  default_success_condition: string;
+  default_failure_condition: string;
+  parallel_execution: boolean;
+  version: number;
+  updated_at: string;
+  nodes: WorkflowNodeSnapshot[];
+  edges: Edge[];
+};
+
 const topMenus: Array<{ id: ActiveModule; label: string }> = [
   { id: 'workflow', label: '워크플로우' },
   { id: 'connections', label: 'Connections' },
@@ -240,6 +264,51 @@ function connectionDescription(connection: Omit<ConnectionForm, 'password'>): st
 }
 
 const apiBaseUrl = 'http://127.0.0.1:8000/api';
+
+function formatSavedAt(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('ko-KR');
+}
+
+function toSavedWorkflowSummary(workflow: WorkflowSummaryResponse): SavedWorkflow {
+  return {
+    id: workflow.id,
+    name: workflow.workflow_name,
+    jobCount: workflow.node_count,
+    connectionCount: workflow.edge_count,
+    savedAt: formatSavedAt(workflow.updated_at),
+    definition: {
+      workflowName: workflow.workflow_name,
+      schedule: workflow.schedule,
+      defaultSuccessCondition: 'on_success',
+      defaultFailureCondition: 'stop_workflow',
+      parallelExecution: false,
+    },
+    jobIds: [],
+    nodes: [],
+    edges: [],
+  };
+}
+
+function toSavedWorkflowWorkspace(workflow: WorkflowWorkspaceResponse): SavedWorkflow {
+  return {
+    id: workflow.id,
+    name: workflow.workflow_name,
+    jobCount: workflow.nodes.length,
+    connectionCount: workflow.edges.length,
+    savedAt: formatSavedAt(workflow.updated_at),
+    definition: {
+      workflowName: workflow.workflow_name,
+      schedule: workflow.schedule,
+      defaultSuccessCondition: workflow.default_success_condition,
+      defaultFailureCondition: workflow.default_failure_condition,
+      parallelExecution: workflow.parallel_execution,
+    },
+    jobIds: [],
+    nodes: workflow.nodes,
+    edges: workflow.edges,
+  };
+}
 
 function toConnectionReference(connection: StoredConnectionResponse): ConnectionReference {
   return {
@@ -437,6 +506,7 @@ function App() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const { screenToFlowPosition } = useReactFlow();
   const [showSaved, setShowSaved] = useState(false);
+  const [workflowError, setWorkflowError] = useState('');
   const [editingJobId, setEditingJobId] = useState<string | null>(null);
   const [editingNodeForm, setEditingNodeForm] = useState<{title: string; componentType: ComponentType}>({title: '', componentType: 'source-extract'});
   const [editingConnectionForm, setEditingConnectionForm] = useState<ConnectionForm>(connectionDefaults);
@@ -460,6 +530,22 @@ function App() {
     void loadStoredConnections();
   }, [loadStoredConnections]);
 
+  const loadWorkflows = useCallback(async () => {
+    try {
+      const response = await fetch(`${apiBaseUrl}/workflows`);
+      const data = (await response.json().catch(() => ([]))) as WorkflowSummaryResponse[] & { detail?: unknown };
+      if (!response.ok) throw new Error(extractApiErrorMessage((data as { detail?: unknown }).detail));
+      setSavedWorkflows(data.map(toSavedWorkflowSummary));
+      setWorkflowError('');
+    } catch (error) {
+      setWorkflowError(error instanceof Error ? error.message : '워크플로우 목록을 불러오지 못했습니다.');
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadWorkflows();
+  }, [loadWorkflows]);
+
   const removeWorkflowNode = useCallback((nodeId: string) => {
     setNodes((current) =>
       current
@@ -481,31 +567,38 @@ function App() {
   }, [setEdges, setNodes]);
 
   // Workflow 생성
-  const createWorkflow = () => {
+  const createWorkflow = async () => {
     const workflowName = workflowForm.workflowName.trim();
-    const name = workflowName || `workflow-${savedWorkflows.length + 1}`;
+    const name = workflowName || `workflow-${Date.now()}`;
 
-    const savedWorkflow: SavedWorkflow = {
-      id: `workflow-${Date.now()}`,
-      name,
-      jobCount: nodes.length,
-      connectionCount: edges.length,
-      savedAt: nowLabel(),
-      definition: { ...workflowForm, workflowName: name },
-      jobIds: [],
-      nodes: nodes.map(({ data, ...node }) => {
-        const { onDelete: _onDelete, ...nodeData } = data;
-        return { ...node, data: nodeData };
-      }),
-      edges: edges.map((edge) => ({ ...edge })),
-    };
+    try {
+      const response = await fetch(`${apiBaseUrl}/workflows`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workflow_name: name,
+          schedule: workflowForm.schedule,
+          default_success_condition: workflowForm.defaultSuccessCondition,
+          default_failure_condition: workflowForm.defaultFailureCondition,
+          parallel_execution: workflowForm.parallelExecution,
+          nodes: [],
+          edges: [],
+        }),
+      });
+      const data = (await response.json().catch(() => ({}))) as WorkflowWorkspaceResponse & { detail?: unknown };
+      if (!response.ok) throw new Error(extractApiErrorMessage(data.detail));
 
-    setSavedWorkflows((current) => [savedWorkflow, ...current]);
-    setSelectedSavedWorkflowId(savedWorkflow.id);
-    setNodes([]);
-    setEdges([]);
-    setWorkflowForm({ ...workflowDefaults, workflowName: '' });
-    setIsWorkflowModalOpen(false);
+      const savedWorkflow = toSavedWorkflowWorkspace(data);
+      setSavedWorkflows((current) => [savedWorkflow, ...current]);
+      setSelectedSavedWorkflowId(savedWorkflow.id);
+      setNodes([]);
+      setEdges([]);
+      setWorkflowForm(savedWorkflow.definition);
+      setIsWorkflowModalOpen(false);
+      setWorkflowError('');
+    } catch (error) {
+      setWorkflowError(error instanceof Error ? error.message : '워크플로우 생성에 실패했습니다.');
+    }
   };
 
   const onConnect = useCallback(
@@ -796,7 +889,7 @@ function App() {
 
 
   // 캔버스 저장 — 활성화된 워크플로우에 현재 노드 정보 업데이트
-  const saveCanvasToWorkflow = () => {
+  const saveCanvasToWorkflow = async () => {
     if (nodes.length === 0) return;
 
     const nodeSnapshot = nodes.map(({ data, ...node }) => {
@@ -804,52 +897,65 @@ function App() {
       return { ...node, data: nodeData };
     });
 
-    if (selectedSavedWorkflowId) {
-      setSavedWorkflows((current) =>
-        current.map((w) => (w.id === selectedSavedWorkflowId ? {
-          ...w,
-          jobCount: nodes.length,
-          connectionCount: edges.length,
-          savedAt: nowLabel(),
-          definition: { ...workflowForm },
+    const workflowName = workflowForm.workflowName.trim() || `workflow-${Date.now()}`;
+    const endpoint = selectedSavedWorkflowId
+      ? `${apiBaseUrl}/workflows/${selectedSavedWorkflowId}`
+      : `${apiBaseUrl}/workflows`;
+
+    try {
+      const response = await fetch(endpoint, {
+        method: selectedSavedWorkflowId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workflow_name: workflowName,
+          schedule: workflowForm.schedule,
+          default_success_condition: workflowForm.defaultSuccessCondition,
+          default_failure_condition: workflowForm.defaultFailureCondition,
+          parallel_execution: workflowForm.parallelExecution,
           nodes: nodeSnapshot,
           edges: edges.map((edge) => ({ ...edge })),
-        } : w))
-      );
-    } else {
-      const workflowName = workflowForm.workflowName.trim() || `workflow-${savedWorkflows.length + 1}`;
-      setWorkflowForm((current) => ({ ...current, workflowName }));
-      const savedWorkflow: SavedWorkflow = {
-        id: `workflow-${Date.now()}`,
-        name: workflowName,
-        jobCount: nodes.length,
-        connectionCount: edges.length,
-        savedAt: nowLabel(),
-        definition: { ...workflowForm, workflowName },
-        jobIds: [],
-        nodes: nodeSnapshot,
-        edges: edges.map((edge) => ({ ...edge })),
-      };
-      setSavedWorkflows((current) => [savedWorkflow, ...current]);
-      setSelectedSavedWorkflowId(savedWorkflow.id);
-    }
+        }),
+      });
+      const data = (await response.json().catch(() => ({}))) as WorkflowWorkspaceResponse & { detail?: unknown };
+      if (!response.ok) throw new Error(extractApiErrorMessage(data.detail));
 
-    setShowSaved(true);
-    setTimeout(() => setShowSaved(false), 3000);
+      const savedWorkflow = toSavedWorkflowWorkspace(data);
+      setSavedWorkflows((current) => [
+        savedWorkflow,
+        ...current.filter((workflow) => workflow.id !== savedWorkflow.id),
+      ]);
+      setSelectedSavedWorkflowId(savedWorkflow.id);
+      setWorkflowForm(savedWorkflow.definition);
+      setShowSaved(true);
+      setWorkflowError('');
+      setTimeout(() => setShowSaved(false), 3000);
+    } catch (error) {
+      setWorkflowError(error instanceof Error ? error.message : '워크플로우 저장에 실패했습니다.');
+    }
   };
 
-  const loadSavedWorkflow = (savedWorkflow: SavedWorkflow) => {
-    setWorkflowForm({ ...savedWorkflow.definition });
-    setNodes(savedWorkflow.nodes.map((node) => ({
-      ...node,
-      data: {
-        ...node.data,
-        onDelete: removeWorkflowNode,
-      },
-    })));
-    setEdges(savedWorkflow.edges.map((edge) => ({ ...edge })));
-    setSelectedSavedWorkflowId(savedWorkflow.id);
-    setActiveModule('workflow');
+  const loadSavedWorkflow = async (workflowId: string) => {
+    try {
+      const response = await fetch(`${apiBaseUrl}/workflows/${workflowId}`);
+      const data = (await response.json().catch(() => ({}))) as WorkflowWorkspaceResponse & { detail?: unknown };
+      if (!response.ok) throw new Error(extractApiErrorMessage(data.detail));
+
+      const savedWorkflow = toSavedWorkflowWorkspace(data);
+      setWorkflowForm(savedWorkflow.definition);
+      setNodes(savedWorkflow.nodes.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          onDelete: removeWorkflowNode,
+        },
+      })));
+      setEdges(savedWorkflow.edges.map((edge) => ({ ...edge })));
+      setSelectedSavedWorkflowId(savedWorkflow.id);
+      setActiveModule('workflow');
+      setWorkflowError('');
+    } catch (error) {
+      setWorkflowError(error instanceof Error ? error.message : '워크플로우를 복원하지 못했습니다.');
+    }
   };
 
   return (
@@ -875,7 +981,7 @@ function App() {
                 key={wf.id}
                 type="button"
                 className={`sidebar-workflow-item ${selectedSavedWorkflowId === wf.id ? 'active' : ''}`}
-                onClick={() => loadSavedWorkflow(wf)}
+                onClick={() => void loadSavedWorkflow(wf.id)}
               >
                 <strong>{wf.name}</strong>
                 <span>노드 {wf.jobCount} · {wf.savedAt}</span>
@@ -922,6 +1028,10 @@ function App() {
           </div>
         </header>
 
+        {activeModule === 'workflow' && workflowError && (
+          <div className="workflow-error" role="alert">{workflowError}</div>
+        )}
+
         {activeModule === 'workflow' && (
           savedWorkflows.length === 0 ? (
             <div className="empty-state">
@@ -964,7 +1074,7 @@ function App() {
                       type="button"
                       onClick={() => {
                         if (nodes.length === 0) return;
-                        saveCanvasToWorkflow();
+                        void saveCanvasToWorkflow();
                       }}
                       disabled={nodes.length === 0}
                       title="현재 캔버스 Workflow 저장"
@@ -1207,7 +1317,7 @@ function App() {
               if (event.target === event.currentTarget) setIsWorkflowModalOpen(false);
             }}
           >
-            <form className="form-panel workflow-modal" role="dialog" aria-modal="true" aria-labelledby="workflow-modal-title" onSubmit={(event) => { event.preventDefault(); createWorkflow(); }}>
+            <form className="form-panel workflow-modal" role="dialog" aria-modal="true" aria-labelledby="workflow-modal-title" onSubmit={(event) => { event.preventDefault(); void createWorkflow(); }}>
               <div className="modal-heading">
                 <PanelTitle icon={<Workflow size={20} />} eyebrow="Workflow 조립" title="신규 워크플로우" />
                 <button type="button" className="icon-button" title="닫기" onClick={() => setIsWorkflowModalOpen(false)}>

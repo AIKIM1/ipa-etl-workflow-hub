@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .connection_factory import DatabaseConnectionError, test_database_connection
 from .connection_models import DatabaseConnectionInput, StoredConnection
@@ -16,6 +16,12 @@ from .connection_repository import (
 )
 from .metadata_service import get_database_metadata, get_table_columns
 from .template_generator import generate_connection_template
+from .workflow_repository import (
+    WorkflowNotFoundError,
+    WorkflowRepository,
+    WorkflowRepositoryError,
+    initialize_workflow_database,
+)
 
 
 ComponentType = Literal[
@@ -76,6 +82,40 @@ class WorkflowDefinition(BaseModel):
 class StoredWorkflow(WorkflowDefinition):
     id: str
     created_at: datetime
+
+
+class WorkflowCanvasNode(BaseModel):
+    """Serializable React Flow node without UI callbacks or secret values."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=120)
+    type: str = Field(default="job", max_length=50)
+    position: dict[str, float]
+    origin: list[float] | None = None
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowCanvasEdge(BaseModel):
+    """Preserves React Flow edge options while requiring source and target IDs."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str | None = Field(default=None, max_length=160)
+    source: str = Field(min_length=1, max_length=120)
+    target: str = Field(min_length=1, max_length=120)
+
+
+class WorkflowCanvasDefinition(BaseModel):
+    """Persistent workspace payload used by the React Flow editor."""
+
+    workflow_name: str = Field(min_length=1, max_length=150)
+    schedule: str = Field(default="", max_length=255)
+    default_success_condition: str = Field(default="on_success", max_length=500)
+    default_failure_condition: str = Field(default="stop_workflow", max_length=500)
+    parallel_execution: bool = False
+    nodes: list[WorkflowCanvasNode] = Field(default_factory=list)
+    edges: list[WorkflowCanvasEdge] = Field(default_factory=list)
 
 
 class ConnectionRegistry:
@@ -183,6 +223,7 @@ class WorkflowRegistry:
 connection_repository = ConnectionRepository()
 job_registry = JobRegistry(connection_repository)
 workflow_registry = WorkflowRegistry(job_registry)
+workflow_repository = WorkflowRepository()
 
 app = FastAPI(title="IPA ETL Workflow Hub API")
 
@@ -200,13 +241,19 @@ def initialize_connection_repository() -> None:
     """Create the control DB table when CONTROL_DATABASE_URL is configured."""
     try:
         initialize_control_database()
-    except ConnectionRepositoryError:
+        initialize_workflow_database()
+    except (ConnectionRepositoryError, WorkflowRepositoryError):
         # Repository APIs return a clear configuration error until PostgreSQL is configured.
         pass
 
 
 def repository_http_error(error: ConnectionRepositoryError) -> HTTPException:
     status_code = 404 if isinstance(error, ConnectionNotFoundError) else 503
+    return HTTPException(status_code=status_code, detail=str(error))
+
+
+def workflow_http_error(error: WorkflowRepositoryError) -> HTTPException:
+    status_code = 404 if isinstance(error, WorkflowNotFoundError) else 503
     return HTTPException(status_code=status_code, detail=str(error))
 
 
@@ -338,13 +385,43 @@ def list_jobs() -> list[StoredJob]:
 
 
 @app.post("/api/workflows")
-def create_workflow(workflow: WorkflowDefinition) -> StoredWorkflow:
-    return workflow_registry.add(workflow)
+def create_workflow(workflow: WorkflowCanvasDefinition) -> dict[str, object]:
+    try:
+        return workflow_repository.create(workflow.model_dump())
+    except WorkflowRepositoryError as error:
+        raise workflow_http_error(error) from error
 
 
 @app.get("/api/workflows")
-def list_workflows() -> list[StoredWorkflow]:
-    return workflow_registry.list()
+def list_workflows() -> list[dict[str, object]]:
+    try:
+        return workflow_repository.list()
+    except WorkflowRepositoryError as error:
+        raise workflow_http_error(error) from error
+
+
+@app.get("/api/workflows/{workflow_id}")
+def get_workflow(workflow_id: str) -> dict[str, object]:
+    try:
+        return workflow_repository.get(workflow_id)
+    except WorkflowRepositoryError as error:
+        raise workflow_http_error(error) from error
+
+
+@app.put("/api/workflows/{workflow_id}")
+def update_workflow(workflow_id: str, workflow: WorkflowCanvasDefinition) -> dict[str, object]:
+    try:
+        return workflow_repository.update(workflow_id, workflow.model_dump())
+    except WorkflowRepositoryError as error:
+        raise workflow_http_error(error) from error
+
+
+@app.delete("/api/workflows/{workflow_id}", status_code=204)
+def delete_workflow(workflow_id: str) -> None:
+    try:
+        workflow_repository.delete(workflow_id)
+    except WorkflowRepositoryError as error:
+        raise workflow_http_error(error) from error
 
 
 # Backward-compatible routes kept for the first screen prototype.
@@ -369,10 +446,10 @@ def list_jobs_legacy() -> list[StoredJob]:
 
 
 @app.post("/workflows")
-def create_workflow_legacy(workflow: WorkflowDefinition) -> StoredWorkflow:
+def create_workflow_legacy(workflow: WorkflowCanvasDefinition) -> dict[str, object]:
     return create_workflow(workflow)
 
 
 @app.get("/workflows")
-def list_workflows_legacy() -> list[StoredWorkflow]:
+def list_workflows_legacy() -> list[dict[str, object]]:
     return list_workflows()
