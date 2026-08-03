@@ -1,0 +1,7 @@
+# Copy these values into the backend process environment or an ignored backend/.env file.
+# This PostgreSQL database manages IPA ETL settings and must not be an ETL source/target database.
+CONTROL_DATABASE_URL=postgresql+psycopg://ipa_control_user:change-me@127.0.0.1:5432/ipa_etl_control
+
+# Generate once with:
+# python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+CONNECTION_ENCRYPTION_KEY=replace-with-a-fernet-key

@@ -8,6 +8,12 @@ from pydantic import BaseModel, Field
 
 from .connection_factory import DatabaseConnectionError, test_database_connection
 from .connection_models import DatabaseConnectionInput, StoredConnection
+from .connection_repository import (
+    ConnectionNotFoundError,
+    ConnectionRepository,
+    ConnectionRepositoryError,
+    initialize_control_database,
+)
 from .metadata_service import get_database_metadata, get_table_columns
 from .template_generator import generate_connection_template
 
@@ -114,7 +120,7 @@ class ConnectionRegistry:
 class JobRegistry:
     """Job은 Workflow보다 먼저 만들어지고 connection_id만 참조합니다."""
 
-    def __init__(self, connections: ConnectionRegistry) -> None:
+    def __init__(self, connections: ConnectionRepository) -> None:
         self._jobs: dict[str, StoredJob] = {}
         self._connections = connections
 
@@ -174,8 +180,8 @@ class WorkflowRegistry:
         return list(self._workflows.values())
 
 
-connection_registry = ConnectionRegistry()
-job_registry = JobRegistry(connection_registry)
+connection_repository = ConnectionRepository()
+job_registry = JobRegistry(connection_repository)
 workflow_registry = WorkflowRegistry(job_registry)
 
 app = FastAPI(title="IPA ETL Workflow Hub API")
@@ -187,6 +193,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def initialize_connection_repository() -> None:
+    """Create the control DB table when CONTROL_DATABASE_URL is configured."""
+    try:
+        initialize_control_database()
+    except ConnectionRepositoryError:
+        # Repository APIs return a clear configuration error until PostgreSQL is configured.
+        pass
+
+
+def repository_http_error(error: ConnectionRepositoryError) -> HTTPException:
+    status_code = 404 if isinstance(error, ConnectionNotFoundError) else 503
+    return HTTPException(status_code=status_code, detail=str(error))
 
 
 @app.get("/health")
@@ -206,55 +227,103 @@ def test_connection(payload: DatabaseConnectionInput) -> dict[str, object]:
 @app.post("/api/connections")
 def create_connection(payload: DatabaseConnectionInput) -> dict[str, object]:
     """DB 접속정보를 등록하고 connection_id를 발급합니다."""
-    connection = connection_registry.add(payload)
-    return connection.public_dict()
+    try:
+        test_result = test_database_connection(payload)
+        connection = connection_repository.create(payload, test_result)
+        return connection.public_dict()
+    except DatabaseConnectionError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except ConnectionRepositoryError as error:
+        raise repository_http_error(error) from error
 
 
 @app.get("/api/connections")
 def list_connections() -> list[dict[str, object]]:
-    return [connection.public_dict() for connection in connection_registry.list()]
+    try:
+        return [connection.public_dict() for connection in connection_repository.list()]
+    except ConnectionRepositoryError as error:
+        raise repository_http_error(error) from error
+
+
+@app.get("/api/connections/{connection_id}")
+def get_connection(connection_id: str) -> dict[str, object]:
+    try:
+        return connection_repository.get(connection_id).public_dict()
+    except ConnectionRepositoryError as error:
+        raise repository_http_error(error) from error
+
+
+@app.put("/api/connections/{connection_id}")
+def update_connection(connection_id: str, payload: DatabaseConnectionInput) -> dict[str, object]:
+    try:
+        test_result = test_database_connection(payload)
+        return connection_repository.update(connection_id, payload, test_result).public_dict()
+    except DatabaseConnectionError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except ConnectionRepositoryError as error:
+        raise repository_http_error(error) from error
+
+
+@app.delete("/api/connections/{connection_id}", status_code=204)
+def delete_connection(connection_id: str) -> None:
+    try:
+        connection_repository.delete(connection_id)
+    except ConnectionRepositoryError as error:
+        raise repository_http_error(error) from error
 
 
 @app.post("/api/connections/{connection_id}/metadata")
 def refresh_connection_metadata(connection_id: str) -> dict[str, object]:
-    connection = connection_registry.get(connection_id)
     try:
+        connection = connection_repository.get(connection_id)
         metadata = get_database_metadata(connection.config)
-        updated = connection_registry.update_metadata(connection_id, metadata, status="CONNECTED")
+        updated = connection_repository.update_metadata(connection_id, metadata, status="ACTIVE")
         return updated.public_dict()
     except DatabaseConnectionError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+    except ConnectionRepositoryError as error:
+        raise repository_http_error(error) from error
 
 
 @app.get("/api/connections/{connection_id}/schemas")
 def list_schemas(connection_id: str) -> dict[str, object]:
-    connection = connection_registry.get(connection_id)
-    return {"connection_id": connection_id, "schemas": connection.schemas}
+    try:
+        connection = connection_repository.get(connection_id)
+        return {"connection_id": connection_id, "schemas": connection.schemas}
+    except ConnectionRepositoryError as error:
+        raise repository_http_error(error) from error
 
 
 @app.get("/api/connections/{connection_id}/tables")
 def list_tables(connection_id: str) -> dict[str, object]:
-    connection = connection_registry.get(connection_id)
-    return {"connection_id": connection_id, "tables": connection.tables}
+    try:
+        connection = connection_repository.get(connection_id)
+        return {"connection_id": connection_id, "tables": connection.tables}
+    except ConnectionRepositoryError as error:
+        raise repository_http_error(error) from error
 
 
 @app.get("/api/connections/{connection_id}/tables/{schema_name}/{table_name}/columns")
 def list_columns(connection_id: str, schema_name: str, table_name: str) -> dict[str, object]:
-    connection = connection_registry.get(connection_id)
     try:
+        connection = connection_repository.get(connection_id)
         columns = get_table_columns(connection.config, schema_name=schema_name, table_name=table_name)
         return {"connection_id": connection_id, "schema": schema_name, "table": table_name, "columns": columns}
     except DatabaseConnectionError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
+    except ConnectionRepositoryError as error:
+        raise repository_http_error(error) from error
 
 
 @app.get("/api/connections/{connection_id}/template")
 def get_connection_template(connection_id: str) -> dict[str, str]:
-    connection = connection_registry.get(connection_id)
     try:
+      connection = connection_repository.get(connection_id)
       template = generate_connection_template(connection.config)
     except ValueError as error:
       raise HTTPException(status_code=400, detail=str(error)) from error
+    except ConnectionRepositoryError as error:
+      raise repository_http_error(error) from error
     return {"connection_id": connection_id, "template": template}
 
 

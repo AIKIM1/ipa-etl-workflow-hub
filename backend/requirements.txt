@@ -2,6 +2,7 @@ fastapi
 uvicorn[standard]
 pydantic
 sqlalchemy
+cryptography
 psycopg[binary]
 mysql-connector-python
 oracledb

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type CSSProperties, type DragEvent, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type DragEvent, type FormEvent, type ReactNode } from 'react';
 import {
   addEdge,
   Background,
@@ -61,10 +61,38 @@ type RegisteredConnection = ConnectionForm & {
   createdAt: string;
 };
 
-type PersistedConnectionConfig = Omit<ConnectionForm, 'password'>;
+type ConnectionReference = {
+  connectionId: string;
+  connectionName: string;
+};
+
+type StoredConnectionResponse = {
+  connection_id: string;
+  status: string;
+  config: {
+    connection_name: string;
+    database_type: DatabaseType;
+    host: string;
+    port: number;
+    database_name: string | null;
+    service_name: string | null;
+    sid: string | null;
+    default_schema: string | null;
+    username: string;
+    password_env_key: string | null;
+    connection_role: ConnectionRole;
+    environment: EnvironmentType;
+    connect_timeout: number;
+    pool_size: number;
+    max_overflow: number;
+    use_ssl: boolean;
+    read_only: boolean;
+    description: string | null;
+  };
+};
 
 type SourceExtractConfig = {
-  connectionNodeId: string;
+  connectionId: string;
   sourceSchema: string;
   sourceTable: string;
   queryCondition: string;
@@ -96,7 +124,7 @@ type JobNodeData = {
   componentType: ComponentType;
   status: 'ready' | 'success' | 'pending';
   connectionLabel: string;
-  connectionConfig?: PersistedConnectionConfig;
+  connectionRef?: ConnectionReference;
   sourceExtractConfig?: SourceExtractConfig;
   onDelete: (nodeId: string) => void;
 } & Record<string, unknown>;
@@ -109,7 +137,7 @@ type WorkflowNodeSnapshotData = {
   componentType: ComponentType;
   status: 'ready' | 'success' | 'pending';
   connectionLabel: string;
-  connectionConfig?: PersistedConnectionConfig;
+  connectionRef?: ConnectionReference;
   sourceExtractConfig?: SourceExtractConfig;
 };
 
@@ -195,17 +223,12 @@ const connectionDefaults: ConnectionForm = {
 };
 
 const sourceExtractDefaults: SourceExtractConfig = {
-  connectionNodeId: '',
+  connectionId: '',
   sourceSchema: '',
   sourceTable: '',
   queryCondition: '',
   watermarkColumn: '',
 };
-
-function toPersistedConnectionConfig(connection: ConnectionForm): PersistedConnectionConfig {
-  const { password: _password, ...config } = connection;
-  return config;
-}
 
 function connectionDescription(connection: Omit<ConnectionForm, 'password'>): string {
   const database =
@@ -214,6 +237,40 @@ function connectionDescription(connection: Omit<ConnectionForm, 'password'>): st
       : connection.databaseName || 'database';
 
   return `${connection.dbType} · ${connection.host}:${connection.port}/${database}`;
+}
+
+const apiBaseUrl = 'http://127.0.0.1:8000/api';
+
+function toConnectionReference(connection: StoredConnectionResponse): ConnectionReference {
+  return {
+    connectionId: connection.connection_id,
+    connectionName: connection.config.connection_name,
+  };
+}
+
+function toConnectionForm(connection: StoredConnectionResponse): ConnectionForm {
+  const config = connection.config;
+  return {
+    name: config.connection_name,
+    dbType: config.database_type,
+    host: config.host,
+    port: String(config.port),
+    databaseName: config.database_name ?? '',
+    serviceName: config.service_name ?? '',
+    sid: config.sid ?? '',
+    username: config.username,
+    password: '',
+    passwordEnvKey: config.password_env_key ?? '',
+    schemaName: config.default_schema ?? '',
+    role: config.connection_role,
+    environment: config.environment,
+    connectTimeout: String(config.connect_timeout),
+    poolSize: String(config.pool_size),
+    maxOverflow: String(config.max_overflow),
+    useSsl: config.use_ssl,
+    readOnly: config.read_only,
+    description: config.description ?? '',
+  };
 }
 
 function sourceExtractDescription(connectionName: string, config: SourceExtractConfig): string {
@@ -387,23 +444,34 @@ function App() {
   const [connectionTest, setConnectionTest] = useState<ConnectionTestState>({ status: 'idle' });
 
   const selectedConnection = connections.find((connection) => connection.id === selectedConnectionId) ?? connections[0];
-  const registeredDatabaseNodes = useMemo(
-    () => nodes.filter((node) => node.data.componentType === 'db-connection' && Boolean(node.data.connectionConfig?.name)),
-    [nodes],
-  );
+  const [storedConnections, setStoredConnections] = useState<ConnectionReference[]>([]);
+  const loadStoredConnections = useCallback(async () => {
+    try {
+      const response = await fetch(`${apiBaseUrl}/connections`);
+      if (!response.ok) throw new Error('Connection 목록을 불러올 수 없습니다.');
+      const data = (await response.json()) as StoredConnectionResponse[];
+      setStoredConnections(data.map(toConnectionReference));
+    } catch {
+      setStoredConnections([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadStoredConnections();
+  }, [loadStoredConnections]);
 
   const removeWorkflowNode = useCallback((nodeId: string) => {
     setNodes((current) =>
       current
         .filter((node) => node.id !== nodeId)
         .map((node) =>
-          node.data.sourceExtractConfig?.connectionNodeId === nodeId
+          node.data.sourceExtractConfig?.connectionId === nodeId
             ? {
                 ...node,
                 data: {
                   ...node.data,
                   connectionLabel: 'DB Connection 선택 필요',
-                  sourceExtractConfig: { ...node.data.sourceExtractConfig, connectionNodeId: '' },
+                  sourceExtractConfig: { ...node.data.sourceExtractConfig, connectionId: '' },
                 },
               }
             : node,
@@ -472,11 +540,6 @@ function App() {
     const nextIndex = nodes.length + 1;
     const isDatabaseConnection = payload.componentType === 'db-connection';
     const isSourceExtract = payload.componentType === 'source-extract';
-    const initialConnectionConfig = toPersistedConnectionConfig({
-      ...connectionDefaults,
-      name: '',
-      password: '',
-    });
 
     const newNode: JobNode = {
       id: `node-${payload.componentType}-${nodeSequence++}`,
@@ -490,7 +553,7 @@ function App() {
         status: 'ready',
         connectionLabel: '컴포넌트',
         ...(isDatabaseConnection
-          ? { connectionLabel: '접속정보 설정 필요', connectionConfig: initialConnectionConfig }
+          ? { connectionLabel: '접속정보 설정 필요' }
           : {}),
         ...(isSourceExtract
           ? { connectionLabel: 'DB Connection 선택 필요', sourceExtractConfig: sourceExtractDefaults }
@@ -521,6 +584,20 @@ function App() {
     );
   };
 
+  const loadConnectionIntoEditor = async (connectionId: string) => {
+    try {
+      const response = await fetch(`${apiBaseUrl}/connections/${connectionId}`);
+      const data = (await response.json().catch(() => ({}))) as StoredConnectionResponse & { detail?: unknown };
+      if (!response.ok) throw new Error(extractApiErrorMessage(data.detail));
+      setEditingConnectionForm(toConnectionForm(data));
+    } catch (error) {
+      setConnectionTest({
+        status: 'error',
+        message: error instanceof Error ? error.message : '저장된 Connection을 불러오지 못했습니다.',
+      });
+    }
+  };
+
   const openNodeEdit = (node: JobNode) => {
     setEditingJobId(node.id);
     setEditingNodeForm({
@@ -528,18 +605,18 @@ function App() {
       componentType: node.data.componentType,
     });
     if (node.data.componentType === 'db-connection') {
-      setEditingConnectionForm({
-        ...connectionDefaults,
-        ...node.data.connectionConfig,
-        name: node.data.connectionConfig?.name || node.data.title,
-        password: '',
-      });
+      if (node.data.connectionRef?.connectionId) {
+        void loadConnectionIntoEditor(node.data.connectionRef.connectionId);
+      } else {
+        setEditingConnectionForm({ ...connectionDefaults, name: '', password: '' });
+      }
     }
     if (node.data.componentType === 'source-extract') {
       setEditingSourceExtractForm({
         ...sourceExtractDefaults,
         ...node.data.sourceExtractConfig,
       });
+      void loadStoredConnections();
     }
     setConnectionTest({ status: 'idle' });
   };
@@ -575,7 +652,7 @@ function App() {
     setConnectionTest({ status: 'testing', message: 'DB 접속을 확인하고 있습니다.' });
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/connections/test', {
+      const response = await fetch(`${apiBaseUrl}/connections/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(createConnectionTestPayload(editingConnectionForm)),
@@ -599,14 +676,66 @@ function App() {
     }
   };
 
-  const saveNodeEdit = (event: FormEvent<HTMLFormElement>) => {
+  const saveNodeEdit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!editingJobId) return;
 
     if (editingNodeForm.componentType === 'db-connection') {
       if (connectionTest.status !== 'success') return;
 
-      const connectionConfig = toPersistedConnectionConfig(editingConnectionForm);
+      const editingNode = nodes.find((node) => node.id === editingJobId);
+      const existingConnectionId = editingNode?.data.connectionRef?.connectionId;
+      const endpoint = existingConnectionId
+        ? `${apiBaseUrl}/connections/${existingConnectionId}`
+        : `${apiBaseUrl}/connections`;
+
+      try {
+        const response = await fetch(endpoint, {
+          method: existingConnectionId ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(createConnectionTestPayload(editingConnectionForm)),
+        });
+        const storedConnection = (await response.json().catch(() => ({}))) as StoredConnectionResponse & { detail?: unknown };
+        if (!response.ok) throw new Error(extractApiErrorMessage(storedConnection.detail));
+
+        const connectionRef = toConnectionReference(storedConnection);
+        setNodes((current) =>
+          current.map((node) =>
+            node.id === editingJobId
+              ? {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    title: connectionRef.connectionName,
+                    connectionLabel: connectionRef.connectionId,
+                    connectionRef,
+                  },
+                }
+              : node.data.sourceExtractConfig?.connectionId === connectionRef.connectionId
+                ? {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      connectionLabel: sourceExtractDescription(connectionRef.connectionName, node.data.sourceExtractConfig),
+                    },
+                  }
+                : node,
+          ),
+        );
+        setStoredConnections((current) => [
+          connectionRef,
+          ...current.filter((connection) => connection.connectionId !== connectionRef.connectionId),
+        ]);
+        setEditingJobId(null);
+      } catch (error) {
+        setConnectionTest({
+          status: 'error',
+          message: error instanceof Error ? error.message : 'Connection 저장에 실패했습니다.',
+        });
+      }
+      return;
+
+      /* Legacy local node persistence removed in favor of Connection Repository.
       setNodes((current) =>
         current.map((node) =>
           node.id === editingJobId
@@ -632,15 +761,16 @@ function App() {
       );
       setEditingJobId(null);
       return;
+      */
     }
 
     if (editingNodeForm.componentType === 'source-extract') {
-      const selectedDatabaseNode = registeredDatabaseNodes.find(
-        (node) => node.id === editingSourceExtractForm.connectionNodeId,
+      const selectedConnection = storedConnections.find(
+        (connection) => connection.connectionId === editingSourceExtractForm.connectionId,
       );
-      if (!selectedDatabaseNode) return;
+      if (!selectedConnection) return;
 
-      const connectionName = selectedDatabaseNode.data.connectionConfig?.name || selectedDatabaseNode.data.title;
+      const connectionName = selectedConnection.connectionName;
       setNodes((current) =>
         current.map((node) =>
           node.id === editingJobId
@@ -1037,11 +1167,11 @@ function App() {
                     <div className="readonly-field">{componentConfigs['source-extract'].label}</div>
                   </label>
                   <div className="field-grid">
-                    <SelectField label="Source DB Connection" value={editingSourceExtractForm.connectionNodeId} onChange={(connectionNodeId) => updateEditingSourceExtract({ connectionNodeId })}>
+                    <SelectField label="Source DB Connection" value={editingSourceExtractForm.connectionId} onChange={(connectionId) => updateEditingSourceExtract({ connectionId })}>
                       <option value="">등록된 DB Connection 선택</option>
-                      {registeredDatabaseNodes.map((node) => (
-                        <option key={node.id} value={node.id}>
-                          {node.data.connectionConfig?.name || node.data.title}
+                      {storedConnections.map((connection) => (
+                        <option key={connection.connectionId} value={connection.connectionId}>
+                          {connection.connectionName}
                         </option>
                       ))}
                     </SelectField>
@@ -1061,7 +1191,7 @@ function App() {
                   </label>
                 </>
               )}
-              <button type="submit" className="primary-submit" disabled={(editingNodeForm.componentType === 'db-connection' && connectionTest.status !== 'success') || (editingNodeForm.componentType === 'source-extract' && !editingSourceExtractForm.connectionNodeId)}>
+              <button type="submit" className="primary-submit" disabled={(editingNodeForm.componentType === 'db-connection' && connectionTest.status !== 'success') || (editingNodeForm.componentType === 'source-extract' && !editingSourceExtractForm.connectionId)}>
                 <Save size={17} />
                 <span>수정 완료</span>
               </button>
