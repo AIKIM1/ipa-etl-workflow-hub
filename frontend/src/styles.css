@@ -405,6 +405,10 @@ button {
   font-weight: 650;
 }
 
+.modal-workflow-error {
+  margin: 0 0 12px;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;

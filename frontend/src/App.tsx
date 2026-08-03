@@ -691,6 +691,11 @@ function App() {
     }
   };
 
+  const openWorkflowModal = () => {
+    setWorkflowError('');
+    setIsWorkflowModalOpen(true);
+  };
+
   const openNodeEdit = (node: JobNode) => {
     setEditingJobId(node.id);
     setEditingNodeForm({
@@ -1020,7 +1025,7 @@ function App() {
           </div>
           <div className="topbar-actions">
             {activeModule === 'workflow' && (
-              <button type="button" onClick={() => setIsWorkflowModalOpen(true)} title="신규 Workflow 생성">
+              <button type="button" onClick={openWorkflowModal} title="신규 Workflow 생성">
                 <Workflow size={17} />
                 <span>Workflow 생성</span>
               </button>
@@ -1327,6 +1332,7 @@ function App() {
               <div id="workflow-modal-title" className="sr-only">신규 워크플로우</div>
               <TextField label="Workflow 이름" value={workflowForm.workflowName} onChange={(value) => setWorkflowForm({ ...workflowForm, workflowName: value })} placeholder="daily_customer_load" />
               <TextField label="실행 스케줄" value={workflowForm.schedule} onChange={(value) => setWorkflowForm({ ...workflowForm, schedule: value })} />
+              {workflowError && <div className="workflow-error modal-workflow-error" role="alert">{workflowError}</div>}
               <div className="input-help">컴포넌트 기반 워크플로우 설계</div>
 
               <button type="submit" className="primary-submit">
