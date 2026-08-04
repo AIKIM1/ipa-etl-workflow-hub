@@ -263,99 +263,144 @@ FastAPI CRUD API 라우트 확인 완료
 
 1. Host: localhost
 2. Port: 5432
-3. Database 이름: etl_job_mgmt (Source) 또는 postgres (Target)
+3. Database 이름: etl_job_mgmt
 4. 기본 Schema: public
 5. Username: postgres
 6. Password: rlaeodud1!
 7. Password Env Key: DB_CONN_SRC_POSTGRES_PASSWORD
-8. 연결 역할: Source / Target 선택
+8. 연결 역할: Source
 9. 환경: DEV
 10. 접속 제한 시간: 10
 11. SSL 사용: 체크 안 함
 12. 읽기 전용: 체크 안 함
 ----
 
-CREATE TABLE connections (
-    connection_id        VARCHAR(20) PRIMARY KEY,
-    connection_name      VARCHAR(100) NOT NULL,
-    db_type              VARCHAR(30) NOT NULL,
-    host                 VARCHAR(255) NOT NULL,
-    port                 INTEGER NOT NULL,
-    database_name        VARCHAR(150) NOT NULL,
-    schema_name          VARCHAR(150),
-    username             VARCHAR(150) NOT NULL,
-    encrypted_password   TEXT NOT NULL,
-    environment          VARCHAR(20) DEFAULT 'DEV',
-    ssl_enabled          BOOLEAN DEFAULT FALSE,
-    connection_options   JSONB DEFAULT '{}'::jsonb,
-    is_active            BOOLEAN DEFAULT TRUE,
-    created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- public.connections definition
+
+-- Drop table
+
+-- DROP TABLE public.connections;
+
+CREATE TABLE public.connections (
+	connection_id varchar(20) NOT NULL,
+	connection_name varchar(100) NOT NULL,
+	db_type varchar(30) NOT NULL,
+	host varchar(255) NOT NULL,
+	port int4 NOT NULL,
+	database_name varchar(150) NOT NULL,
+	schema_name varchar(150) NULL,
+	username varchar(150) NOT NULL,
+	encrypted_password text NOT NULL,
+	environment varchar(20) DEFAULT 'DEV'::character varying NULL,
+	ssl_enabled bool DEFAULT false NULL,
+	connection_options jsonb DEFAULT '{}'::jsonb NULL,
+	is_active bool DEFAULT true NULL,
+	created_at timestamp DEFAULT CURRENT_TIMESTAMP NULL,
+	updated_at timestamp DEFAULT CURRENT_TIMESTAMP NULL,
+	CONSTRAINT connections_connection_id_not_null NOT NULL connection_id,
+	CONSTRAINT connections_connection_name_not_null NOT NULL connection_name,
+	CONSTRAINT connections_database_name_not_null NOT NULL database_name,
+	CONSTRAINT connections_db_type_not_null NOT NULL db_type,
+	CONSTRAINT connections_encrypted_password_not_null NOT NULL encrypted_password,
+	CONSTRAINT connections_host_not_null NOT NULL host,
+	CONSTRAINT connections_pkey PRIMARY KEY (connection_id),
+	CONSTRAINT connections_port_not_null NOT NULL port,
+	CONSTRAINT connections_username_not_null NOT NULL username
+);
+
+-----
+
+-- public.workflow_edges definition
+
+-- Drop table
+
+-- DROP TABLE public.workflow_edges;
+
+CREATE TABLE public.workflow_edges (
+	id bigserial NOT NULL,
+	workflow_id varchar(30) NOT NULL,
+	edge_id varchar(100) NOT NULL,
+	source_node_id varchar(100) NOT NULL,
+	target_node_id varchar(100) NOT NULL,
+	source_handle varchar(100) NULL,
+	target_handle varchar(100) NULL,
+	condition_type varchar(30) DEFAULT 'SUCCESS'::character varying NULL,
+	edge_json jsonb DEFAULT '{}'::jsonb NULL,
+	created_at timestamp DEFAULT CURRENT_TIMESTAMP NULL,
+	CONSTRAINT uq_workflow_edge UNIQUE (workflow_id, edge_id),
+	CONSTRAINT workflow_edges_edge_id_not_null NOT NULL edge_id,
+	CONSTRAINT workflow_edges_id_not_null NOT NULL id,
+	CONSTRAINT workflow_edges_pkey PRIMARY KEY (id),
+	CONSTRAINT workflow_edges_source_node_id_not_null NOT NULL source_node_id,
+	CONSTRAINT workflow_edges_target_node_id_not_null NOT NULL target_node_id,
+	CONSTRAINT workflow_edges_workflow_id_not_null NOT NULL workflow_id
+);
+
+
+-- public.workflow_edges foreign keys
+
+ALTER TABLE public.workflow_edges ADD CONSTRAINT fk_edge_workflow FOREIGN KEY (workflow_id) REFERENCES public.workflows(workflow_id) ON DELETE CASCADE;
+
+---------
+
+-- public.workflow_nodes definition
+
+-- Drop table
+
+-- DROP TABLE public.workflow_nodes;
+
+CREATE TABLE public.workflow_nodes (
+	id bigserial NOT NULL,
+	workflow_id varchar(30) NOT NULL,
+	node_id varchar(100) NOT NULL,
+	node_type varchar(50) NOT NULL,
+	node_name varchar(150) NULL,
+	position_x float8 DEFAULT 0 NOT NULL,
+	position_y float8 DEFAULT 0 NOT NULL,
+	connection_id varchar(20) NULL,
+	config_json jsonb DEFAULT '{}'::jsonb NULL,
+	created_at timestamp DEFAULT CURRENT_TIMESTAMP NULL,
+	updated_at timestamp DEFAULT CURRENT_TIMESTAMP NULL,
+	CONSTRAINT uq_workflow_node UNIQUE (workflow_id, node_id),
+	CONSTRAINT workflow_nodes_id_not_null NOT NULL id,
+	CONSTRAINT workflow_nodes_node_id_not_null NOT NULL node_id,
+	CONSTRAINT workflow_nodes_node_type_not_null NOT NULL node_type,
+	CONSTRAINT workflow_nodes_pkey PRIMARY KEY (id),
+	CONSTRAINT workflow_nodes_position_x_not_null NOT NULL position_x,
+	CONSTRAINT workflow_nodes_position_y_not_null NOT NULL position_y,
+	CONSTRAINT workflow_nodes_workflow_id_not_null NOT NULL workflow_id
+);
+
+
+-- public.workflow_nodes foreign keys
+
+ALTER TABLE public.workflow_nodes ADD CONSTRAINT fk_node_connection FOREIGN KEY (connection_id) REFERENCES public.connections(connection_id) ON DELETE SET NULL;
+ALTER TABLE public.workflow_nodes ADD CONSTRAINT fk_node_workflow FOREIGN KEY (workflow_id) REFERENCES public.workflows(workflow_id) ON DELETE CASCADE;
+
+
+---------
+
+-- public.workflows definition
+
+-- Drop table
+
+-- DROP TABLE public.workflows;
+
+CREATE TABLE public.workflows (
+	workflow_id varchar(30) NOT NULL,
+	workflow_name varchar(150) NOT NULL,
+	description text NULL,
+	status varchar(30) DEFAULT 'DRAFT'::character varying NULL,
+	schedule_enabled bool DEFAULT false NULL,
+	schedule_expression varchar(100) NULL,
+	"version" int4 DEFAULT 1 NULL,
+	is_active bool DEFAULT true NULL,
+	created_at timestamp DEFAULT CURRENT_TIMESTAMP NULL,
+	updated_at timestamp DEFAULT CURRENT_TIMESTAMP NULL,
+	CONSTRAINT workflows_pkey PRIMARY KEY (workflow_id),
+	CONSTRAINT workflows_workflow_id_not_null NOT NULL workflow_id,
+	CONSTRAINT workflows_workflow_name_not_null NOT NULL workflow_name
 );
 
 
 
-CREATE TABLE workflows (
-    workflow_id          VARCHAR(30) PRIMARY KEY,
-    workflow_name        VARCHAR(150) NOT NULL,
-    description          TEXT,
-    status               VARCHAR(30) DEFAULT 'DRAFT',
-    schedule_enabled     BOOLEAN DEFAULT FALSE,
-    schedule_expression  VARCHAR(100),
-    version              INTEGER DEFAULT 1,
-    is_active            BOOLEAN DEFAULT TRUE,
-    created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-
-
-CREATE TABLE workflow_nodes (
-    id                   BIGSERIAL PRIMARY KEY,
-    workflow_id          VARCHAR(30) NOT NULL,
-    node_id              VARCHAR(100) NOT NULL,
-    node_type            VARCHAR(50) NOT NULL,
-    node_name            VARCHAR(150),
-    position_x           DOUBLE PRECISION NOT NULL DEFAULT 0,
-    position_y           DOUBLE PRECISION NOT NULL DEFAULT 0,
-    connection_id        VARCHAR(20),
-    config_json          JSONB DEFAULT '{}'::jsonb,
-    created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT fk_node_workflow
-        FOREIGN KEY (workflow_id)
-        REFERENCES workflows(workflow_id)
-        ON DELETE CASCADE,
-
-    CONSTRAINT fk_node_connection
-        FOREIGN KEY (connection_id)
-        REFERENCES connections(connection_id)
-        ON DELETE SET NULL,
-
-    CONSTRAINT uq_workflow_node
-        UNIQUE (workflow_id, node_id)
-);
-
-
-
-CREATE TABLE workflow_edges (
-    id                   BIGSERIAL PRIMARY KEY,
-    workflow_id          VARCHAR(30) NOT NULL,
-    edge_id              VARCHAR(100) NOT NULL,
-    source_node_id       VARCHAR(100) NOT NULL,
-    target_node_id       VARCHAR(100) NOT NULL,
-    source_handle        VARCHAR(100),
-    target_handle        VARCHAR(100),
-    condition_type       VARCHAR(30) DEFAULT 'SUCCESS',
-    edge_json            JSONB DEFAULT '{}'::jsonb,
-    created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT fk_edge_workflow
-        FOREIGN KEY (workflow_id)
-        REFERENCES workflows(workflow_id)
-        ON DELETE CASCADE,
-
-    CONSTRAINT uq_workflow_edge
-        UNIQUE (workflow_id, edge_id)
-);
