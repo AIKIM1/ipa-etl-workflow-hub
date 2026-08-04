@@ -258,3 +258,18 @@ React TypeScript 프로덕션 빌드 성공
 노드 위치, 연결선, connectionId 참조의 저장·복원 테스트 성공
 FastAPI CRUD API 라우트 확인 완료
 현재 제어용 PostgreSQL 접속정보가 설정되지 않아 실제 운영 DB에는 아직 테이블을 생성하지 않았습니다. CONTROL_DATABASE_URL 설정 후 서버를 재시작하면 영구 저장 기능을 바로 사용할 수 있습니다.
+
+----------------
+
+1. Host: localhost
+2. Port: 5432
+3. Database 이름: etl_job_mgmt (Source) 또는 postgres (Target)
+4. 기본 Schema: public
+5. Username: postgres
+6. Password: rlaeodud1!
+7. Password Env Key: DB_CONN_SRC_POSTGRES_PASSWORD
+8. 연결 역할: Source / Target 선택
+9. 환경: DEV
+10. 접속 제한 시간: 10
+11. SSL 사용: 체크 안 함
+12. 읽기 전용: 체크 안 함
