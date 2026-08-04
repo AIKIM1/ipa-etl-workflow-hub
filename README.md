@@ -307,3 +307,55 @@ CREATE TABLE workflows (
     created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+
+
+CREATE TABLE workflow_nodes (
+    id                   BIGSERIAL PRIMARY KEY,
+    workflow_id          VARCHAR(30) NOT NULL,
+    node_id              VARCHAR(100) NOT NULL,
+    node_type            VARCHAR(50) NOT NULL,
+    node_name            VARCHAR(150),
+    position_x           DOUBLE PRECISION NOT NULL DEFAULT 0,
+    position_y           DOUBLE PRECISION NOT NULL DEFAULT 0,
+    connection_id        VARCHAR(20),
+    config_json          JSONB DEFAULT '{}'::jsonb,
+    created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_node_workflow
+        FOREIGN KEY (workflow_id)
+        REFERENCES workflows(workflow_id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT fk_node_connection
+        FOREIGN KEY (connection_id)
+        REFERENCES connections(connection_id)
+        ON DELETE SET NULL,
+
+    CONSTRAINT uq_workflow_node
+        UNIQUE (workflow_id, node_id)
+);
+
+
+
+CREATE TABLE workflow_edges (
+    id                   BIGSERIAL PRIMARY KEY,
+    workflow_id          VARCHAR(30) NOT NULL,
+    edge_id              VARCHAR(100) NOT NULL,
+    source_node_id       VARCHAR(100) NOT NULL,
+    target_node_id       VARCHAR(100) NOT NULL,
+    source_handle        VARCHAR(100),
+    target_handle        VARCHAR(100),
+    condition_type       VARCHAR(30) DEFAULT 'SUCCESS',
+    edge_json            JSONB DEFAULT '{}'::jsonb,
+    created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_edge_workflow
+        FOREIGN KEY (workflow_id)
+        REFERENCES workflows(workflow_id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT uq_workflow_edge
+        UNIQUE (workflow_id, edge_id)
+);
