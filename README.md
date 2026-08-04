@@ -273,3 +273,37 @@ FastAPI CRUD API 라우트 확인 완료
 10. 접속 제한 시간: 10
 11. SSL 사용: 체크 안 함
 12. 읽기 전용: 체크 안 함
+----
+
+CREATE TABLE connections (
+    connection_id        VARCHAR(20) PRIMARY KEY,
+    connection_name      VARCHAR(100) NOT NULL,
+    db_type              VARCHAR(30) NOT NULL,
+    host                 VARCHAR(255) NOT NULL,
+    port                 INTEGER NOT NULL,
+    database_name        VARCHAR(150) NOT NULL,
+    schema_name          VARCHAR(150),
+    username             VARCHAR(150) NOT NULL,
+    encrypted_password   TEXT NOT NULL,
+    environment          VARCHAR(20) DEFAULT 'DEV',
+    ssl_enabled          BOOLEAN DEFAULT FALSE,
+    connection_options   JSONB DEFAULT '{}'::jsonb,
+    is_active            BOOLEAN DEFAULT TRUE,
+    created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+
+CREATE TABLE workflows (
+    workflow_id          VARCHAR(30) PRIMARY KEY,
+    workflow_name        VARCHAR(150) NOT NULL,
+    description          TEXT,
+    status               VARCHAR(30) DEFAULT 'DRAFT',
+    schedule_enabled     BOOLEAN DEFAULT FALSE,
+    schedule_expression  VARCHAR(100),
+    version              INTEGER DEFAULT 1,
+    is_active            BOOLEAN DEFAULT TRUE,
+    created_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
