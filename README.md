@@ -148,3 +148,113 @@ def export_data(df: DataFrame, **kwargs) -> None:
             )
     finally:
         engine.dispose()
+
+
+추천해준 방법대로 저장기능 구현했어
+아래 참고해줘
+
+구현 완료했습니다.
+동작 흐름
+DB connection 컴포넌트에 접속정보 입력
+DB 접속 테스트 성공
+수정 완료 시 FastAPI가 다시 검증 후 제어용 PostgreSQL에 저장
+CONN_A12B34CD 형식의 connection_id 발급
+캔버스 DB 노드는 connectionId, connectionName만 저장
+원천 추출은 Repository 목록에서 connection_id를 선택해 참조
+직접 입력한 비밀번호는 PostgreSQL에 암호화해 저장하며, API 응답·캔버스·워크플로우 JSON에는 포함하지 않습니다.
+주요 파일:
+Connection Repository
+Connection CRUD API (line 224)
+DB Connection 및 원천 추출 화면 (line 687)
+PostgreSQL 테이블 생성 SQL
+환경변수 예시
+생성할 PostgreSQL 테이블은 connections입니다. 제어용 PostgreSQL에 001_create_connections.sql을 실행하거나, CONTROL_DATABASE_URL 설정 후 FastAPI를 시작하면 자동 생성됩니다.
+필수 환경변수는 다음 두 가지입니다.
+CONTROL_DATABASE_URL=postgresql+psycopg://USER:PASSWORD@HOST:5432/ipa_etl_control
+CONNECTION_ENCRYPTION_KEY=Fernet_암호화키
+실제 PostgreSQL 접속정보가 아직 없어 테이블을 직접 생성하지는 않았습니다. 프론트 빌드, Repository 암호화 저장·조회·삭제, CRUD API 라우트 검증은 완료했습니다. FastAPI는 http://127.0.0.1:8000, 프론트는 http://127.0.0.1:5173에서 실행 중입니다.
+
+파일 7개를 편집했습니다+575-72변경 사항 검토실행 취소리뷰
+
+backend/app/connection_repository.pybackend/app/connection_repository.py+261-8
+backend/requirements.txtbackend/requirements.txt+1-0
+backend/sql/001_create_connections.sqlbackend/sql/001_create_connections.sql+40-4
+4개 파일 더 보기
+
+오전 12:21
+
+워크스페이스가 저장되어 서버 재시작을 해도 남아 있을 수 있도록 개발 하고 싶어
+어떤 방법이 좋을지 계획(플랜) 새워줘
+
+오전 12:28
+
+좋습니다. 현재 워크스페이스는 React 메모리에만 있어 새로고침·서버 재시작 시 사라집니다. 가장 적합한 방식은 이미 만든 제어용 PostgreSQL에 워크플로우 정의를 저장하는 것입니다.
+권장 구조
+React Flow 캔버스
+→ 워크플로우 저장 API
+→ FastAPI 검증
+→ Control PostgreSQL 저장
+→ 서버 재시작 후 목록·캔버스 복원
+저장 대상
+테이블	역할
+workflows	워크플로우 이름, 상태, 스케줄, 버전, 생성·수정일
+workflow_nodes	캔버스 노드 종류, 위치 X/Y, Job·Connection 참조, 설정 JSON
+workflow_edges	노드 간 연결, 성공·실패 조건, 실행 순서
+workflow_versions	저장 이력과 이전 버전 복원용 스냅샷
+workflow_drafts	작업 중 자동 저장되는 임시 워크스페이스
+
+DB Connection 노드는 connection_id만, 원천 추출은 source_connection_id와 Schema/Table/조건/Watermark만 저장합니다. 비밀번호는 워크플로우 테이블에 저장하지 않습니다.
+개발 흐름
+workflows, workflow_nodes, workflow_edges PostgreSQL 테이블과 SQLAlchemy Repository를 추가합니다.
+FastAPI에 워크플로우 CRUD API를 구현합니다.
+생성, 목록, 상세 조회, 수정, 삭제, 복제, 버전 조회
+현재 워크플로우 저장 버튼이 캔버스의 노드·엣지·입력값을 API로 저장하도록 변경합니다.
+좌측 워크플로우 목록은 GET /api/workflows 결과를 표시하도록 변경합니다.
+목록에서 워크플로우를 선택하면 GET /api/workflows/{id}로 노드 위치와 연결선을 복원합니다.
+캔버스 이동, 노드 추가·삭제, 연결 변경 후 3~5초 지연 자동 저장을 추가합니다.
+명시적인 저장은 새 버전을 생성하고, 자동 저장은 Draft만 갱신합니다.
+서버 시작 후에도 PostgreSQL에 저장된 워크플로우 목록과 마지막 Draft를 다시 불러옵니다.
+권장 API
+POST   /api/workflows
+GET    /api/workflows
+GET    /api/workflows/{workflow_id}
+PUT    /api/workflows/{workflow_id}
+DELETE /api/workflows/{workflow_id}
+POST   /api/workflows/{workflow_id}/versions
+GET    /api/workflows/{workflow_id}/versions
+PUT    /api/workflows/{workflow_id}/draft
+GET    /api/workflows/{workflow_id}/draft
+1차 구현에서는 workflows + workflow_nodes + workflow_edges 영구 저장과 목록·복원까지 먼저 만들고, 그 다음 자동 저장 Draft와 버전 관리로 확장하는 순서가 가장 안정적입니다.
+
+오전 12:28
+
+위의 (워크플로우 저장)방법대로 권장 구조와 저장 대상, 개발 흐름 대로 개발 진행해줘
+먼저 영구 저장과 목록·복원까지 만들어줘
+개발 시작해줘.
+
+오전 12:34
+
+10m 24s 동안 작업
+
+영구 워크스페이스 저장과 목록·복원 기능을 구현했습니다.
+저장 흐름
+Workflow 생성 시 제어용 PostgreSQL에 workflows 레코드를 생성합니다.
+캔버스의 워크플로우 저장 시 노드, 좌표, 연결선, 컴포넌트 설정을 API로 저장합니다.
+좌측 목록은 GET /api/workflows에서 조회합니다.
+목록을 클릭하면 DB의 노드와 연결선을 다시 읽어 React Flow 캔버스를 복원합니다.
+DB Connection과 원천 추출은 접속정보 전체가 아닌 connectionId 참조를 유지합니다.
+추가된 테이블:
+workflows: 이름, 스케줄, 상태, 버전, 생성·수정일
+workflow_nodes: 노드 유형, 위치, Connection 참조, 설정 JSON
+workflow_edges: 노드 연결 정보와 React Flow 엣지 JSON
+주요 파일:
+워크플로우 Repository
+워크플로우 CRUD API (line 387)
+워크스페이스 테이블 SQL
+프론트 저장·목록·복원 (line 533)
+CONTROL_DATABASE_URL이 설정된 상태에서 FastAPI를 시작하면 connections, workflows, workflow_nodes, workflow_edges 테이블이 자동 생성됩니다. 또는 SQL 파일을 제어용 PostgreSQL에 직접 실행할 수 있습니다.
+검증 완료:
+React TypeScript 프로덕션 빌드 성공
+노드 위치, 연결선, connectionId 참조의 저장·복원 테스트 성공
+FastAPI CRUD API 라우트 확인 완료
+현재 제어용 PostgreSQL 접속정보가 설정되지 않아 실제 운영 DB에는 아직 테이블을 생성하지 않았습니다. CONTROL_DATABASE_URL 설정 후 서버를 재시작하면 영구 저장 기능을 바로 사용할 수 있습니다.
